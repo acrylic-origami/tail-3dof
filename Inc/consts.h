@@ -15,8 +15,6 @@
 #define AS1130_ONOFF_FR0_REG    0x01
 #define AS1130_PWM_SET0_REG     0x40
 #define AS1130_DATA_LOAD_ADDR   0x18
-#define PX_SIZE 24 // 24 data frames of 8/3 LEDs each, 12 rows
-// parsed into this strange format by main, not interrupt
 
 // Physics, time and scale
 // TIM2 ticks per ms

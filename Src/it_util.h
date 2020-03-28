@@ -8,6 +8,8 @@
 #ifndef IT_UTIL_H_
 #define IT_UTIL_H_
 
+#include "consts.h"
+
 #define BIT2MS(a_256) ((a_256 * TIM2_MS) >> 8)
 
 uint16_t poly(uint16_t *p, uint16_t t);

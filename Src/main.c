@@ -54,7 +54,14 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+as1130_state_t AS1130_setup_state = ONOFF;
+const uint8_t AS1130_ONOFF_SEL[AS1130_ONOFF_SEL_SIZE] = { AS1130_REG_SEL_ADDR, AS1130_ONOFF_FR0_REG };
+const uint8_t AS1130_ONOFF_DATA[AS1130_ONOFF_DATA_SIZE] = { // enable all LEDs
+	0xFF, 0x07, // select PWM frame 0
+	// turn on all
+	0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07
+};
+const uint8_t AS1130_PWM_SEL[AS1130_PWM_SEL_SIZE] = { AS1130_REG_SEL_ADDR, AS1130_PWM_SET0_REG };
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -124,10 +131,29 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(10);
-  // hi2c2->Instance->CR1 |= I2C_CR1_START | I2C_CR1_PE; // enable and put into master mode
 
-
+  HAL_Delay(10); // give AS1130 >5ms to setup I2C address (as spec'd)
+  while(AS1130_setup_state != READY || hi2c2->State != HAL_I2C_STATE_READY) {
+	  if(hi2c2->State == HAL_I2C_STATE_READY) {
+		  switch(AS1130_setup_state) {
+		  	  case ONOFF_SEL:
+		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_SEL, AS1130_ONOFF_SEL_SIZE);
+		  		  AS1130_setup_state = ONOFF;
+		  		  break;
+		  	  case ONOFF:
+		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_DATA, AS1130_ONOFF_DATA_SIZE);
+		  		  AS1130_setup_state = PWM_SEL;
+		  		  break;
+		  	  case PWM_SEL:
+		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_PWM_SEL, AS1130_PWM_SEL_SIZE);
+		  		  AS1130_setup_state = READY;
+		  		  break;
+		  	  default:
+		  		  // for now, race condition between while and if check
+		  		  break;
+		  }
+	  }
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -175,7 +201,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV4;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV16;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {

@@ -57,7 +57,16 @@
 /* #define USE_FULL_ASSERT    1U */
 
 /* USER CODE BEGIN Private defines */
-
+typedef enum as1130_state_e {
+	ONOFF_SEL,
+	ONOFF,
+	PWM_SEL,
+	READY
+} as1130_state_t;
+#define AS1130_ONOFF_SEL_SIZE 3
+#define AS1130_ONOFF_DATA_SIZE 24
+#define AS1130_PWM_SEL_SIZE 3
+#define PX_SIZE 24 // 24 data frames of 8/3 LEDs each, 12 rows
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

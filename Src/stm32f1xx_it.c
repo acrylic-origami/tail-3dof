@@ -44,42 +44,6 @@ volatile uint16_t t_phy;
 // except for stepper, which uses pi/256 units
 volatile int32_t sparams_128[3][4];
 
-extern uint8_t px[PX_SIZE];
-extern volatile uint8_t px_idx;
-typedef enum i2c_macro_state_e {
-	ONOFF_SEL,
-	ONOFF,
-	RUN_SEL,
-	RUN
-} i2c_macro_state_t;
-typedef enum i2c_state_e {
-	STOP,
-	DEV_ADDR,
-	REG_ADDR,
-	DATA
-} i2c_state_t;
-volatile i2c_macro_state_t I2C_macro_state = ONOFF;
-volatile i2c_state_t I2C_state = STOP;
-#define ONOFF_DATA_SIZE 24
-const uint8_t ONOFF_DATA[ONOFF_DATA_SIZE] = { // enable all LEDs
-	0xFF,
-	0x07, // select PWM frame 0
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-	0xFF,
-	0x07,
-};
-volatile uint8_t onoff_data_idx = 0;
 extern TIM_HandleTypeDef htim3;
 /* USER CODE END 0 */
 
@@ -334,51 +298,6 @@ void TIM4_IRQHandler(void)
 void I2C2_EV_IRQHandler(void)
 {
   /* USER CODE BEGIN I2C2_EV_IRQn 0 */
-	// only load in and increment on start-bit interrupt
-	// PUSH INTO HAL! DELETE ALMOST ALL OF THIS
-	uint8_t *buff = hi2c2->pBuffPtr;
-	if(hi2c2->Instance->SR1 & I2C_SR1_SB) {
-		&buff = AS1130_ADDR;
-	}
-	else if(hi2c2->Instance->SR1 & I2C_SR1_ADDR) {
-		switch(I2C_macro_state) {
-			case ONOFF_SEL:
-			case RUN_SEL:
-				&buff = AS1130_REG_SEL_ADDR;
-				break;
-			case ONOFF:
-			case RUN:
-				&buff = AS1130_DATA_LOAD_ADDR;
-				break;
-		}
-	}
-	else if(hi2c2->Instance->SR1 & I2C_SR1_BTF) {
-		switch(I2C_macro_state) {
-			case ONOFF_SEL:
-				&buff = AS1130_ONOFF_FR0_REG;
-				I2C_macro_state = ONOFF;
-				hi2c2->Instance->CR1 |= I2C_CR1_STOP;
-				break;
-			case ONOFF:
-				&buff = ONOFF_DATA[onoff_data_idx++];
-				if(onoff_data_idx >= ONOFF_DATA_SIZE) {
-					I2C_macro_state = RUN_SEL;
-					hi2c2->Instance->CR1 |= I2C_CR1_STOP;
-				}
-				break;
-			case RUN_SEL:
-				&buff = AS1130_PWM_SET0_REG;
-				I2C_macro_state = RUN;
-				hi2c2->Instance->CR1 |= I2C_CR1_STOP;
-				break;
-			case RUN:
-				if(px_idx >= PX_SIZE)
-					hi2c2->Instance->CR1 |= I2C_CR1_STOP;
-				else
-					&buff = px[px_idx++];
-				break;
-		}
-	}
 
   /* USER CODE END I2C2_EV_IRQn 0 */
   HAL_I2C_EV_IRQHandler(&hi2c2);
