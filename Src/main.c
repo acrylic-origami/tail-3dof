@@ -43,10 +43,11 @@
 #include "i2c.h"
 #include "spi.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "consts.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -65,7 +66,24 @@ void SystemClock_Config(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+// note differing units: stepper is in integer 8-steps (256-scaled)
+// servos are in 1/256 fractions of total range, 256-scaled
+// for 51:1 stepper gearmotor, this is 0.28deg/256
+// for 180deg servo, this is 0.7deg/256
 
+// velocity units are also different
+// stepper velocity is the ground truth: it's exponential in this velocity figure
+// from 0 to 7, goes from 128 to 1
+// servo velocity needs to compensate for the changes in stepper velocity because
+// it's updated on the stepper SPI interrupt
+// the increment per tick should be normalized by the stepper velocity
+// these are for the interrupt's convenience
+uint32_t target_256[3] = {0}, target_v_256[3] = {0};
+volatile uint32_t cur_256[3] = {0}, cur_v_256[3] = {0};
+
+uint8_t px[PX_SIZE];
+volatile uint8_t px_idx = PX_SIZE;
+extern I2C_HandleTypeDef hi2c2;
 /* USER CODE END 0 */
 
 /**
@@ -98,11 +116,17 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_I2C1_Init();
-  MX_SPI1_Init();
+  MX_TIM3_Init();
+  MX_USART2_UART_Init();
+  MX_I2C2_Init();
+  MX_SPI2_Init();
   MX_TIM1_Init();
+  MX_TIM4_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(10);
+  // hi2c2->Instance->CR1 |= I2C_CR1_START | I2C_CR1_PE; // enable and put into master mode
+
 
   /* USER CODE END 2 */
 
@@ -132,10 +156,13 @@ void SystemClock_Config(void)
 
     /**Initializes the CPU, AHB and APB busses clocks 
     */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = 16;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -145,12 +172,12 @@ void SystemClock_Config(void)
     */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV4;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV16;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }

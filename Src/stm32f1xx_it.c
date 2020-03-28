@@ -36,11 +36,58 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
+#include "consts.h"
+#include "it_util.h"
 
+volatile uint16_t t_phy;
+// maps -pi -> pi to 1000 -> 2000 (ms units), scaled by 128 for fractions
+// except for stepper, which uses pi/256 units
+volatile int32_t sparams_128[3][4];
+
+extern uint8_t px[PX_SIZE];
+extern volatile uint8_t px_idx;
+typedef enum i2c_macro_state_e {
+	ONOFF_SEL,
+	ONOFF,
+	RUN_SEL,
+	RUN
+} i2c_macro_state_t;
+typedef enum i2c_state_e {
+	STOP,
+	DEV_ADDR,
+	REG_ADDR,
+	DATA
+} i2c_state_t;
+volatile i2c_macro_state_t I2C_macro_state = ONOFF;
+volatile i2c_state_t I2C_state = STOP;
+#define ONOFF_DATA_SIZE 24
+const uint8_t ONOFF_DATA[ONOFF_DATA_SIZE] = { // enable all LEDs
+	0xFF,
+	0x07, // select PWM frame 0
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+	0xFF,
+	0x07,
+};
+volatile uint8_t onoff_data_idx = 0;
+extern TIM_HandleTypeDef htim3;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern DMA_HandleTypeDef hdma_spi1_rx;
+extern I2C_HandleTypeDef hi2c2;
+extern DMA_HandleTypeDef hdma_spi2_rx;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim4;
 
 /******************************************************************************/
 /*            Cortex-M3 Processor Interruption and Exception Handlers         */ 
@@ -193,17 +240,151 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
-* @brief This function handles DMA1 channel2 global interrupt.
+* @brief This function handles DMA1 channel4 global interrupt.
 */
-void DMA1_Channel2_IRQHandler(void)
+void DMA1_Channel4_IRQHandler(void)
 {
-  /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
+  /* USER CODE BEGIN DMA1_Channel4_IRQn 0 */
 
-  /* USER CODE END DMA1_Channel2_IRQn 0 */
-  HAL_DMA_IRQHandler(&hdma_spi1_rx);
-  /* USER CODE BEGIN DMA1_Channel2_IRQn 1 */
+  /* USER CODE END DMA1_Channel4_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_spi2_rx);
+  /* USER CODE BEGIN DMA1_Channel4_IRQn 1 */
 
-  /* USER CODE END DMA1_Channel2_IRQn 1 */
+  /* USER CODE END DMA1_Channel4_IRQn 1 */
+}
+
+/**
+* @brief This function handles TIM2 global interrupt.
+*/
+void TIM2_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM2_IRQn 0 */
+	// TODO if this blocks too hard, put in main loop
+	// TODO for now assume stepper is synchronized
+	if(--t_phy <= 0) {
+		// TODO pop Q + freefall
+		int8_t next[3][2];
+		uint8_t next_t;
+
+		uint8_t _ms = { 0, 1, 1 }; // use nat units for stepper
+		for(uint8_t i = 1; i < 3; i++)
+			spline(sparams_128[i][3], sparams_128[i][2], next[0][0], next[0][1], next_t, sparams_128[i], _ms[i]);
+
+		t_phy = next_t - 1;
+	}
+
+	__HAL_TIM_SET_COMPARE(htim2, TIM_CHANNEL_1, poly(sparams_128[1], t_phy));
+	__HAL_TIM_SET_COMPARE(htim2, TIM_CHANNEL_2, poly(sparams_128[2], t_phy));
+
+	// TODO softlimit
+	// if too inefficient, cache prev step in global state
+	uint32_t prev_step = poly(sparams_128[0], t_phy + 1),
+			 next_step = poly(sparams_128[0], t_phy);
+	uint8_t dir = next_step < prev_step;
+
+	// always 20ms to complete one step
+	// clocked at 8 / 13 MHz, need to make next_step - prev_step in 20E-3 * (8E6 / 13) cycles
+	uint16_t n_steps = (NAT_TO_STEP_256 * (next_step - prev_step)) >> 8;
+	uint16_t step_rate = TIM3_BASE_STEPS / n_steps;
+
+	//// <CRITICAL TIM4 SECTION> ////
+	// disable tim3 (which clocks tim4)
+	htim3->Instance->CR1 &= ~(TIM_CR1_CEN);
+
+	// set tim4 direction
+	uint32_t cr = htim4->Instance->CR1;
+	cr &= ~(TIM_CR1_DIR);
+	cr |= dir << TIM_CR1_DIR_Pos;
+	// TODO check if this external direction is correct
+	HAL_GPIO_WritePin(GPIOA, dir, 5);
+	__HAL_TIM_SET_COMPARE(htim4, TIM_CHANNEL_1, next_step);
+
+	// set amount of time to complete
+	__HAL_TIM_SET_AUTORELOAD(htim3, step_rate); // note endpoint inclusive
+	__HAL_TIM_SET_COMPARE(htim3, TIM_CHANNEL_1, ((step_rate + 1) >> 1)); // recenter compare
+
+	htim3->Instance->CR1 |= TIM_CR1_CEN;
+	//// </CRITICAL TIM4 SECTION> ////
+
+  /* USER CODE END TIM2_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim2);
+  /* USER CODE BEGIN TIM2_IRQn 1 */
+
+  /* USER CODE END TIM2_IRQn 1 */
+}
+
+/**
+* @brief This function handles TIM4 global interrupt.
+*/
+void TIM4_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM4_IRQn 0 */
+	// we're too fast: stop by disabling timer temporarily
+	htim3->Instance->CR1 &= ~(TIM_CR1_CEN);
+  /* USER CODE END TIM4_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim4);
+  /* USER CODE BEGIN TIM4_IRQn 1 */
+
+  /* USER CODE END TIM4_IRQn 1 */
+}
+
+/**
+* @brief This function handles I2C2 event interrupt.
+*/
+void I2C2_EV_IRQHandler(void)
+{
+  /* USER CODE BEGIN I2C2_EV_IRQn 0 */
+	// only load in and increment on start-bit interrupt
+	// PUSH INTO HAL! DELETE ALMOST ALL OF THIS
+	uint8_t *buff = hi2c2->pBuffPtr;
+	if(hi2c2->Instance->SR1 & I2C_SR1_SB) {
+		&buff = AS1130_ADDR;
+	}
+	else if(hi2c2->Instance->SR1 & I2C_SR1_ADDR) {
+		switch(I2C_macro_state) {
+			case ONOFF_SEL:
+			case RUN_SEL:
+				&buff = AS1130_REG_SEL_ADDR;
+				break;
+			case ONOFF:
+			case RUN:
+				&buff = AS1130_DATA_LOAD_ADDR;
+				break;
+		}
+	}
+	else if(hi2c2->Instance->SR1 & I2C_SR1_BTF) {
+		switch(I2C_macro_state) {
+			case ONOFF_SEL:
+				&buff = AS1130_ONOFF_FR0_REG;
+				I2C_macro_state = ONOFF;
+				hi2c2->Instance->CR1 |= I2C_CR1_STOP;
+				break;
+			case ONOFF:
+				&buff = ONOFF_DATA[onoff_data_idx++];
+				if(onoff_data_idx >= ONOFF_DATA_SIZE) {
+					I2C_macro_state = RUN_SEL;
+					hi2c2->Instance->CR1 |= I2C_CR1_STOP;
+				}
+				break;
+			case RUN_SEL:
+				&buff = AS1130_PWM_SET0_REG;
+				I2C_macro_state = RUN;
+				hi2c2->Instance->CR1 |= I2C_CR1_STOP;
+				break;
+			case RUN:
+				if(px_idx >= PX_SIZE)
+					hi2c2->Instance->CR1 |= I2C_CR1_STOP;
+				else
+					&buff = px[px_idx++];
+				break;
+		}
+	}
+
+  /* USER CODE END I2C2_EV_IRQn 0 */
+  HAL_I2C_EV_IRQHandler(&hi2c2);
+  /* USER CODE BEGIN I2C2_EV_IRQn 1 */
+
+  /* USER CODE END I2C2_EV_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

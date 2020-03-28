@@ -1,8 +1,8 @@
 /**
   ******************************************************************************
-  * File Name          : I2C.h
+  * File Name          : USART.c
   * Description        : This file provides code for the configuration
-  *                      of the I2C instances.
+  *                      of the USART instances.
   ******************************************************************************
   ** This notice applies to any and all portions of this file
   * that are not between comment pairs USER CODE BEGIN and
@@ -36,39 +36,89 @@
   *
   ******************************************************************************
   */
-/* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __i2c_H
-#define __i2c_H
-#ifdef __cplusplus
- extern "C" {
-#endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f1xx_hal.h"
-#include "main.h"
+#include "usart.h"
 
-/* USER CODE BEGIN Includes */
+#include "gpio.h"
 
-/* USER CODE END Includes */
+/* USER CODE BEGIN 0 */
 
-extern I2C_HandleTypeDef hi2c2;
+/* USER CODE END 0 */
 
-/* USER CODE BEGIN Private defines */
+UART_HandleTypeDef huart2;
 
-/* USER CODE END Private defines */
+/* USART2 init function */
 
-extern void _Error_Handler(char *, int);
+void MX_USART2_UART_Init(void)
+{
 
-void MX_I2C2_Init(void);
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_HalfDuplex_Init(&huart2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
 
-/* USER CODE BEGIN Prototypes */
-
-/* USER CODE END Prototypes */
-
-#ifdef __cplusplus
 }
-#endif
-#endif /*__ i2c_H */
+
+void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+{
+
+  GPIO_InitTypeDef GPIO_InitStruct;
+  if(uartHandle->Instance==USART2)
+  {
+  /* USER CODE BEGIN USART2_MspInit 0 */
+
+  /* USER CODE END USART2_MspInit 0 */
+    /* USART2 clock enable */
+    __HAL_RCC_USART2_CLK_ENABLE();
+  
+    /**USART2 GPIO Configuration    
+    PA2     ------> USART2_TX 
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_2;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN USART2_MspInit 1 */
+
+  /* USER CODE END USART2_MspInit 1 */
+  }
+}
+
+void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
+{
+
+  if(uartHandle->Instance==USART2)
+  {
+  /* USER CODE BEGIN USART2_MspDeInit 0 */
+
+  /* USER CODE END USART2_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_USART2_CLK_DISABLE();
+  
+    /**USART2 GPIO Configuration    
+    PA2     ------> USART2_TX 
+    */
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2);
+
+  /* USER CODE BEGIN USART2_MspDeInit 1 */
+
+  /* USER CODE END USART2_MspDeInit 1 */
+  }
+} 
+
+/* USER CODE BEGIN 1 */
+
+/* USER CODE END 1 */
 
 /**
   * @}
