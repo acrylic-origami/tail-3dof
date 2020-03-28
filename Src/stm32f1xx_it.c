@@ -40,6 +40,7 @@
 #include "it_util.h"
 
 volatile uint16_t t_phy;
+uint8_t step_phy_en = 1, phy_en = 1;
 // maps -pi -> pi to 1000 -> 2000 (ms units), scaled by 128 for fractions
 // except for stepper, which uses pi/256 units
 volatile int32_t sparams_128[3][4];
@@ -50,6 +51,7 @@ extern TIM_HandleTypeDef htim3;
 /* External variables --------------------------------------------------------*/
 extern I2C_HandleTypeDef hi2c2;
 extern DMA_HandleTypeDef hdma_spi2_rx;
+extern SPI_HandleTypeDef hspi2;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim4;
 
@@ -204,6 +206,23 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+* @brief This function handles EXTI line3 interrupt.
+*/
+void EXTI3_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI3_IRQn 0 */
+	// limit switch triggered
+	// TODO make directional disable (instead of e-stop)
+	step_phy_en = 0;
+	htim3->Instance->CR1 &= ~(TIM_CR1_CEN);
+  /* USER CODE END EXTI3_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
+  /* USER CODE BEGIN EXTI3_IRQn 1 */
+
+  /* USER CODE END EXTI3_IRQn 1 */
+}
+
+/**
 * @brief This function handles DMA1 channel4 global interrupt.
 */
 void DMA1_Channel4_IRQHandler(void)
@@ -267,7 +286,9 @@ void TIM2_IRQHandler(void)
 	__HAL_TIM_SET_AUTORELOAD(htim3, step_rate); // note endpoint inclusive
 	__HAL_TIM_SET_COMPARE(htim3, TIM_CHANNEL_1, ((step_rate + 1) >> 1)); // recenter compare
 
-	htim3->Instance->CR1 |= TIM_CR1_CEN;
+	if(step_phy_en)
+		htim3->Instance->CR1 |= TIM_CR1_CEN;
+
 	//// </CRITICAL TIM4 SECTION> ////
 
   /* USER CODE END TIM2_IRQn 0 */
@@ -304,6 +325,20 @@ void I2C2_EV_IRQHandler(void)
   /* USER CODE BEGIN I2C2_EV_IRQn 1 */
 
   /* USER CODE END I2C2_EV_IRQn 1 */
+}
+
+/**
+* @brief This function handles SPI2 global interrupt.
+*/
+void SPI2_IRQHandler(void)
+{
+  /* USER CODE BEGIN SPI2_IRQn 0 */
+
+  /* USER CODE END SPI2_IRQn 0 */
+  HAL_SPI_IRQHandler(&hspi2);
+  /* USER CODE BEGIN SPI2_IRQn 1 */
+
+  /* USER CODE END SPI2_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

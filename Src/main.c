@@ -54,6 +54,8 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+
+//// AS1130 ////
 as1130_state_t AS1130_setup_state = ONOFF;
 const uint8_t AS1130_ONOFF_SEL[AS1130_ONOFF_SEL_SIZE] = { AS1130_REG_SEL_ADDR, AS1130_ONOFF_FR0_REG };
 const uint8_t AS1130_ONOFF_DATA[AS1130_ONOFF_DATA_SIZE] = { // enable all LEDs
@@ -62,6 +64,11 @@ const uint8_t AS1130_ONOFF_DATA[AS1130_ONOFF_DATA_SIZE] = { // enable all LEDs
 	0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07, 0xFF, 0x07
 };
 const uint8_t AS1130_PWM_SEL[AS1130_PWM_SEL_SIZE] = { AS1130_REG_SEL_ADDR, AS1130_PWM_SET0_REG };
+
+// SPH0615
+#define MIC_BUFFER_SIZE 1024
+uint8_t mic_buffer[MIC_BUFFER_SIZE] = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,29 +138,8 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-
-  HAL_Delay(10); // give AS1130 >5ms to setup I2C address (as spec'd)
-  while(AS1130_setup_state != READY || hi2c2->State != HAL_I2C_STATE_READY) {
-	  if(hi2c2->State == HAL_I2C_STATE_READY) {
-		  switch(AS1130_setup_state) {
-		  	  case ONOFF_SEL:
-		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_SEL, AS1130_ONOFF_SEL_SIZE);
-		  		  AS1130_setup_state = ONOFF;
-		  		  break;
-		  	  case ONOFF:
-		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_DATA, AS1130_ONOFF_DATA_SIZE);
-		  		  AS1130_setup_state = PWM_SEL;
-		  		  break;
-		  	  case PWM_SEL:
-		  		  HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_PWM_SEL, AS1130_PWM_SEL_SIZE);
-		  		  AS1130_setup_state = READY;
-		  		  break;
-		  	  default:
-		  		  // for now, race condition between while and if check
-		  		  break;
-		  }
-	  }
-  }
+  AS1130_Init();
+  SPH0645_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -221,7 +207,34 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void AS1130_Init(void) {
+	HAL_Delay(10); // give AS1130 >5ms to setup I2C address (as spec'd)
+	while(AS1130_setup_state != READY || hi2c2->State != HAL_I2C_STATE_READY) {
+		if(hi2c2->State == HAL_I2C_STATE_READY) {
+			switch(AS1130_setup_state) {
+			case ONOFF_SEL:
+				HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_SEL, AS1130_ONOFF_SEL_SIZE);
+				AS1130_setup_state = ONOFF;
+				break;
+			case ONOFF:
+				HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_ONOFF_DATA, AS1130_ONOFF_DATA_SIZE);
+				AS1130_setup_state = PWM_SEL;
+				break;
+			case PWM_SEL:
+				HAL_I2C_Master_Transmit_IT(hi2c2, AS1130_ADDR, AS1130_PWM_SEL, AS1130_PWM_SEL_SIZE);
+				AS1130_setup_state = READY;
+				break;
+			default:
+				// for now, race condition between while and if check
+				break;
+			}
+		}
+	}
+}
+void SPH0645_Init(void) {
+	// wow i really hope this is all i need to do
+	HAL_SPI_Receive_DMA(hspi2, mic_buffer, MIC_BUFFER_SIZE);
+}
 /* USER CODE END 4 */
 
 /**
