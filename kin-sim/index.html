@@ -1,0 +1,176 @@
+<html>
+<meta charset="utf-8" />
+<head>
+	<!-- <script type="text/javascript" src="js/vendor/rx.lite.min.js"></script> -->
+	<script>
+		// const O = Rx.Observable;
+		function F(A, q) {
+			const c = q.map(Math.cos);
+			const s = q.map(Math.sin);
+			const v = A[1] + c[1] * (A[2] + A[3] * c[2])
+			return [
+				s[1] * (A[3] * c[2] + A[2]),
+				c[0] * v - A[3] * s[0] * s[2],
+				s[0] * v + A[3] * c[0] * s[2]
+			]
+		}
+		function G(A, T) {
+ 			const rT = Math.sqrt((T[0] * T[0]) + (T[1] * T[1]) + (T[2] * T[2]))
+			const r_yz = Math.sqrt((T[1] * T[1]) + (T[2] * T[2]))
+			
+			const c1 = r_yz / rT
+			
+			const r0 = A[1] + c1 * A[2]
+			const r1 = c1 * A[3]
+			const r2 = A[3]
+			
+			const pc = [
+				1 / (r1 * r1) - 1 / (r2 * r2),
+				-2 * r_yz / (r1 * r1),
+				(r0 / (r2 * r2)) + (r_yz / (r1 * r1)) - 1
+			]
+			const det = (pc[1] * pc[1]) - 4 * pc[0] * pc[2]
+			if(det >= 0) {
+				const y = [-1, 1].map(sgn => (-pc[1] + sgn * Math.sqrt(det)) / 2 / pc[0]).filter(a => Math.abs(a) < r0);
+				if(y.length > 0) {
+					const z = Math.sqrt((r0 * r0) - (y[0] * y[0]))
+					const t0 = Math.asin(z / r0) + Math.atan2(T[2], T[1])
+					const t2 = Math.atan2(z, (y[0] - r_yz) / c1) + Math.pi
+					
+					const m0 = z / r0
+					const m1 = -1 / m0
+					const y_ = (m1 * r_yz) / (m1 - m0)
+					const z_ = m0 * y_
+					const r_yz_ = Math.sqrt((y_ * y_) + (z_ * z_))
+					const t1 = Math.atan2(T[0], r_yz_ - A[1])
+				
+					const thetas = [t0, t1, t2]
+					return [T, kin.F(A, thetas), thetas];
+				}
+			}
+		}
+		function spline(a, av, b, bv, t) {
+			const M = [ [ t * t * 3, t * 2 ], [ t * t * t, t * t ] ];
+			const B = [ av - bv, a - b - bv * t ];
+			const x = [ M[1][1] * B[0] - M[0][1] * B[1], M[0][0] * B[1] - M[1][0] * B[0] ].map(z => z / (M[0][0] * M[1][1] - M[0][1] * M[1][0]));
+			return x.concat([bv, b]);
+		}
+		function poly(p, t) {
+			return p.reduce((a, q, i) => a + q * Math.pow(t, p.length - i - 1), 0);
+		}
+		function softlim(x, a, b) {
+			return x;
+			// return a + Math.log(1 + Math.exp(b - a) / (1 + Math.exp(b - x)));
+		}
+		window.addEventListener('load', function() {
+			const cvs = document.getElementById('main');
+			const ctx = cvs.getContext('2d');
+			const DSTEP = 154E-6 * 512; // 8 steps at 32 microsteps at 1.8/51 deg per step -> 154 microradians; chunk into 128-step blocks
+			let sparams = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]; // stepper, servo, servo
+			let cur_step = 0;
+			let t = 0, tstep = 0;
+			let vp = 7;
+			// const Q = [  ];
+			let parity = 0;
+			
+			// servo loop
+			const A = [0, 1, 4, 2];
+			
+			(function() {
+				setInterval(function() {
+					// debugger;
+					if(t === 0) {
+						// TODO freefall behavior
+						const next = parity ? [[1, 1], [-1, -0.3], [1, -0.4], 64] : [[-1, 0.3], [0.5, 0.2], [-1.5, -0.3], 64]; // Q.pop();
+						parity = !parity;
+						const next_t = next[next.length - 1];
+						
+						const cur_step_v = poly([sparams[0][0] * 3, sparams[0][1] * 2, sparams[0][2]], tstep);
+						sparams[0] = spline(cur_step, cur_step_v, next[0][0], next[0][1], next_t);
+						for(let i = 1; i < next.length - 1; i++) {
+							sparams[i] = spline(sparams[i][3], sparams[i][2], next[i][0], next[i][1], next_t);
+						}
+						// debugger;
+						
+						t = next_t;
+						tstep = next_t;
+					}
+					// tstep--;
+					if(tstep - (--t) >= 1) { // more than one step queueing: speed it up
+						vp = Math.max(vp - 1, 0);
+					}
+					setTimeout(function(e) { // "fire" off SPI
+						const dest = poly(sparams[0], tstep - 1);
+						const sgn = (dest > poly(sparams[0], tstep));
+						cur_step += DSTEP * (2 * sgn - 1);
+						// console.log(cur_step);
+						if((cur_step > dest) === sgn) {
+							if((--tstep) - t === 0) // no new steps during this time: slow it down
+								vp = Math.min(vp + 1, 7);
+						}
+					}, (1 << vp));
+					// console.log(sparams);
+					// debugger;
+				}, 128);
+			})();
+			window.requestAnimationFrame(function draw() {
+				const cur_servos = sparams.slice(1).map(ps => softlim(poly(ps, t), -Math.PI / 2, Math.PI / 2));
+				// const cur_step = softlim(poly(sparams[0], tstep), -Math.PI / 2, Math.PI / 2);
+				// debugger;
+				
+				const sels = [[0, 1], [0, 2], [1, 2]];
+				const draw_r = 16;
+				const draw_w = 256;
+				
+				const q = [cur_step].concat(cur_servos);
+				const c = q.map(Math.cos);
+				const s = q.map(Math.sin);
+				const P = [
+					[0, A[1] * c[0], A[1] * s[0]],
+					[A[2] * s[1], A[2] * c[0] * c[1] + A[1] * c[0], A[2] * s[0] * c[1] + A[1] * s[0]],
+					F(A, q)
+				];
+				const pt = F(A, [sparams[0][3], sparams[1][3], sparams[2][3]]);
+				const pi = F(A, sparams.map(ps => softlim(poly(ps, t), -Math.PI / 2, Math.PI / 2)));
+				ctx.clearRect(0, 0, cvs.width, cvs.height);
+				for(let i = 0; i < sels.length; i++) {
+					
+					ctx.fillStyle = 'none';
+					ctx.strokeStyle = 'red';
+					ctx.beginPath();
+					ctx.moveTo(draw_w * (i + 0.5), draw_w / 2);
+					for(let j = 0; j < P.length; j++) {
+						ctx.lineTo(P[j][sels[i][0]] * draw_r + draw_w * (i + 0.5), P[j][sels[i][1]] * draw_r + draw_w / 2);
+					}
+					ctx.stroke();
+					ctx.strokeStyle = 'none';
+					ctx.fillStyle = 'red';
+					ctx.fillRect(P[P.length - 1][sels[i][0]] * draw_r + draw_w * (i + 0.5) - 3, P[P.length - 1][sels[i][1]] * draw_r + draw_w / 2 - 3, 6, 6);
+					ctx.fillStyle = 'green';
+					ctx.fillRect(pt[sels[i][0]] * draw_r + draw_w * (i + 0.5) - 3, pt[sels[i][1]] * draw_r + draw_w / 2- 3, 6, 6)
+					ctx.fillStyle = 'cyan';
+					ctx.fillRect(pi[sels[i][0]] * draw_r + draw_w * (i + 0.5) - 3, pi[sels[i][1]] * draw_r + draw_w / 2- 3, 6, 6)
+					// debugger;
+				}
+				
+				window.requestAnimationFrame(draw);
+			});
+		});
+	</script>
+	<style>
+		body, html {
+			width:100%;
+			height:100%;
+			margin:0;
+		}
+		*, *::before, *::after {
+			box-sizing:border-box;
+		}
+	</style>
+</head>
+<body>
+	<div>
+		<canvas width="1920" height="960" id="main" />
+	</div>
+</body>
+</html>
