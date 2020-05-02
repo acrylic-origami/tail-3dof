@@ -30,6 +30,8 @@
 /* USER CODE BEGIN Includes */
 #include "kin.h"
 #include "traj.h"
+#include "consts.h"
+#include "math_util.h"
 
 /* USER CODE END Includes */
 
@@ -54,7 +56,7 @@ int16_t pos_dbl_buf[2][NUM_POS][3] = { 0 };
 volatile int16_t pos[NUM_POS][3] = { 0 };
 uint8_t buf_fresh = 0;
 uint16_t tick_fin_buf = 0, tick_fin = 0, tick_cur = 0;
-float A[4] = { 0.0, A1, A2, A3 };
+int32_t A[4] = { 0, A1, A2, A3 };
 
 extern volatile uint8_t mcp1130_ch;
 extern volatile uint16_t mcp1130_mosi;
@@ -68,16 +70,15 @@ const joint_phys_t JOINT_PHYS[3] = {
 const uint16_t MIDs[3] = { CCR_MID_HW, CCR_MID_HS, CCR_MID_DS };
 const uint16_t RNGs[3] = { RNG_HW / 2, RNG_HS / 2, RNG_DS / 2 };
 const uint16_t PER_RADS[3] = { 1, CCR_PER_RAD_HS, CCR_PER_RAD_DS };
-float vf_prev[3] = { 0 }; // previous final velocity
-float t_prev[3] = { 0 }; // previous target angles (after inv kin)
-const float MAX_TF = (NUM_POS - 1) * 1.0 / TIM3_FREQ;
+int32_t vf_prev[3] = { 0 }; // previous final velocity
+int32_t t_prev[3] = { 0 }; // previous target angles (after inv kin)
 const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
 
 // TEMP
 #define NUM_CART_POS 2
-float Ts_[NUM_CART_POS][6] = {
-		{ 0.1, 0, A1 + A2 + A3 - 0.015, 0, 0.3, -0.3 },
-		{ -0.1, 0, A1 + A2 + A3 - 0.015, 0, -0.3, 0.3 },
+int32_t Ts_[NUM_CART_POS][6] = {
+		{ 26, 0, A1 + A2 + A3 - 4, 0, 77, -77 },
+		{ -26, 0, A1 + A2 + A3 - 4, 0, -77, 77 },
 };
 volatile uint8_t Ts_idx = 0;
 /* USER CODE END PV */
@@ -90,7 +91,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-float inter = 0;
+int32_t inter = 0;
 /* USER CODE END 0 */
 
 /**
@@ -168,16 +169,16 @@ int main(void)
 	  }
 
 	  {
-		  while(buf_fresh) {}; // TEMP
-		  float max_tf = 0;
-		  float t[3], v[3], tf[3], tbnd[2];
+//		  while(buf_fresh) {}; // TEMP
+		  int32_t max_tf = 0;
+		  int32_t t[3], v[3], tf[3], tbnd[2];
 		  uint8_t _converged = 1;
 		  if(!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t)) {
 			  for(uint8_t i = 0; i < 3 && _converged; i++) {
 				  uint8_t j = 0;
-				  for(float v_ = Ts_[Ts_idx & (NUM_CART_POS - 1)][i + 3]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
+				  for(int32_t v_ = Ts_[Ts_idx & (NUM_CART_POS - 1)][i + 3]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
 					  if(!traj_t(t_prev[i], t[i], vf_prev[i], v_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
-						  tf[i] = 1 / tbnd[1];
+						  tf[i] = (1 << _TW) / tbnd[1];
 						  v[i] = v_;
 //						  if(tf_ > 2 * MAX_TF)
 //							  _converged = 0;
@@ -195,12 +196,12 @@ int main(void)
 				  max_tf = tf[i];
 		  }
 
-		  tick_fin_buf = max_tf * 3 * TIM3_FREQ;
+		  tick_fin_buf = max_tf * 3 * TIM3_FREQ; // WATCH: TIM3_FREQ is base units
 		  if(_converged) {
 			  for(uint8_t i = 0; i < NUM_POS; i++) {
 				  for(uint8_t j = 0; j < 3; j++) {
-					  inter = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / NUM_POS) * PER_RADS[j];
-					  int16_t pos_ = fmax(-RNG_DS, fmin(RNG_DS, floor(inter)));
+					  inter = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / NUM_POS) * PER_RADS[j]; // WATCH: NUM_POS and PER_RADS is base units
+					  int16_t pos_ = max(-RNG_DS, min(RNG_DS, inter >> _W)); // CONVERT
 					  pos_ *= RHR_SGNS[j];
 					  pos_dbl_buf[0][i][j] = pos_ < -RNGs[j] ? -RNGs[j] : (pos_ > RNGs[j] ? RNGs[j] : pos_);
 				  }
@@ -213,11 +214,11 @@ int main(void)
 				  vf_prev[i] = v[i];
 				  t_prev[i] = t[i];
 			  }
-//			  memcpy(&vf_prev, &v, 3 * sizeof(float));
+//			  memcpy(&vf_prev, &v, 3 * sizeof(int32_t));
 			  buf_fresh = 1;
 
-			  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 		  }
+		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 	  }
   }
   /* USER CODE END 3 */

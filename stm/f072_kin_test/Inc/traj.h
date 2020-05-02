@@ -12,10 +12,10 @@
 
 // servo parameters //
 // overshoot scaling
-#define ALPHA 2.0
+#define ALPHA 512 // UNFLOAT 2.0
 
 // Newton's method limit
-#define TIM_ITER_LIM 8
+#define TIM_ITER_LIM 1
 
 // safety
 // n cycles time constant, defines threshold for PI thresholding, tied to filter coeff
@@ -50,16 +50,17 @@
 #define FREEFALL_THRESH 28
 
 typedef struct joint_phys_s {
-	float T0;
-	float SMAX;
-	float I;
+	int32_t T0;
+	int32_t SMAX;
+	int32_t I;
 } joint_phys_t;
 
 // MOI units are in kg-cm
 // Hitec D645
-#define T0_HS 16.0
-#define SMAX_HS 6.16
-#define I_HS 80
+#define T0_HS 4096 // UNFLOAT 16.0
+#define SMAX_HS 1577 // UNFLOAT 6.16
+#define I_HS 20480 // UNFLOAT 80
+
 #define CCR_PER_RAD_HS 220
 #define CCR_MID_HS 632
 #define RNG_HS 576
@@ -69,9 +70,9 @@ typedef struct joint_phys_s {
 #define POT_RNG_HS 590
 
 // DSServo 3218MG
-#define T0_DS 20.0
-#define SMAX_DS 7.5
-#define I_DS 30
+#define T0_DS 5120 // UNFLOAT 20.0
+#define SMAX_DS 1920 // UNFLOAT 7.5
+#define I_DS 7680 // UNFLOAT 30
 #define CCR_PER_RAD_DS 252
 #define CCR_MID_DS 588
 #define RNG_DS 864
@@ -81,12 +82,12 @@ typedef struct joint_phys_s {
 #define POT_HIGH_DS 1024
 
 // Hobbywing
-#define T0_HW 1390
-#define SMAX_HW 1.37
-#define I_HW 100
+#define T0_HW 355840 // UNFLOAT 1390
+#define SMAX_HW 350 // UNFLOAT 1.37
+#define I_HW 25600 // UNFLOAT 100
 #define RNG_HW 200
 // ccr/rad/s _unloaded_
-#define CCR_PER_RAD_S_HW 0.01363
+#define CCR_PER_RAD_S_HW 4 // UNFLOAT 0.01363
 #define GEAR_RATIO_HW 51
 #define DEADBAND_HW 14
 #define CCR_MID_HW 562
@@ -96,7 +97,7 @@ typedef struct joint_phys_s {
 #define P_HW_N 1
 #define P_HW_D 3
 
-float sgn(float x);
-uint8_t traj_t(float x0, float x1, float v0, float v1, float *bnd, joint_phys_t *phys);
+int32_t sgn(int32_t x);
+uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joint_phys_t *phys);
 
 #endif /* TRAJ_H_ */
