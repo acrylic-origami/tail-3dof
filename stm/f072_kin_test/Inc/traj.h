@@ -11,35 +11,92 @@
 
 
 // servo parameters //
+// overshoot scaling
 #define ALPHA 2.0
 
+// Newton's method limit
+#define TIM_ITER_LIM 8
+
+// safety
+// n cycles time constant, defines threshold for PI thresholding, tied to filter coeff
+#define I_TC_N 5
+#define I_TC_D 1
+#define I_FILT_COEFF_N 4
+#define I_FILT_COEFF_D 5
+// scaled against 4A/1024
+#define I_MAX_N 512
+#define ERROR_TC 5
+// TODO need to tune this to the ADC settings
+// TODO for the moment: 20deg at 151deg range (spanning 1024)
+//#define ERROR_MAX_N 136
+#define ERROR_MAX_N 50
+#define ERROR_FILT_COEFF_N 4
+#define ERROR_FILT_COEFF_D 5
+
+#define ERROR_SCALE_HS_N 9
+#define ERROR_SCALE_HS_D 10
+
+// freefall filter for reset
+// n cycles time constant
+#define FREEFALL_TC_N 36
+#define FREEFALL_TC_D 25
+#define FREEFALL_FILT_COEFF_N 1
+#define FREEFALL_FILT_COEFF_D 2
+// allow approx. 10 "degree-time-constants" of error (stricter than instantaneous)
+// TC * (thresh / rng * rng_ccr)
+// TODO: I don't think this filter will work without the setpoint:
+// could trip back into operation by coincidence while it's still moving
+// probably want a kind of difference component to make sure it's not moving much anymore
+#define FREEFALL_THRESH 28
+
+typedef struct joint_phys_s {
+	float T0;
+	float SMAX;
+	float I;
+} joint_phys_t;
+
+// MOI units are in kg-cm
 // Hitec D645
 #define T0_HS 16.0
 #define SMAX_HS 6.16
-#define I_HS 8.0
+#define I_HS 80
 #define CCR_PER_RAD_HS 220
 #define CCR_MID_HS 632
-#define RNG_HS 288
+#define RNG_HS 576
+#define SGN_HS -1
+
+#define POT_MID_HS 541
+#define POT_RNG_HS 590
 
 // DSServo 3218MG
 #define T0_DS 20.0
 #define SMAX_DS 7.5
-#define I_DS 3.0
+#define I_DS 30
 #define CCR_PER_RAD_DS 252
 #define CCR_MID_DS 588
-#define RNG_DS 432
+#define RNG_DS 864
+#define SGN_DS 1
 
-// Hobbywing ESC
-#define CCR_PER_RAD_S_HW 0.695
+#define POT_LOW_DS 0
+#define POT_HIGH_DS 1024
+
+// Hobbywing
+#define T0_HW 1390
+#define SMAX_HW 1.37
+#define I_HW 100
+#define RNG_HW 200
+// ccr/rad/s _unloaded_
+#define CCR_PER_RAD_S_HW 0.01363
 #define GEAR_RATIO_HW 51
 #define DEADBAND_HW 14
 #define CCR_MID_HW 562
+#define SGN_HW 1
 //temp
 #define MAX_CCR_HW 10
 #define P_HW_N 1
 #define P_HW_D 3
 
 float sgn(float x);
-uint8_t traj_t(float x0, float x1, float v0, float v1, float *bnd);
+uint8_t traj_t(float x0, float x1, float v0, float v1, float *bnd, joint_phys_t *phys);
 
 #endif /* TRAJ_H_ */
