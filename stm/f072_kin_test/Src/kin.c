@@ -45,7 +45,7 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
 		if(r_yz - r2 > r0 || r_yz + r2 < r0)
 			return 1; // outside of range
 
-		y = (r0 * r0 - r1 * r1) / 2 / r_yz; // EXEMPT: * followed by /, along with distributivity
+		y = (r0 * r0 + r_yz * r_yz - r1 * r1) / 2 / r_yz; // EXEMPT: * followed by /, along with distributivity
 	}
 	else {
 		// TODO: new control flow in full quadratic solution, debug why this isn't working properly.
@@ -73,8 +73,8 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     volatile int32_t z_ = m0 * y_ >> _W;
     volatile int32_t r_yz_ = isqrt(y_ * y_ + z_ * z_); // WATCH multiply with sqrt
 
-    if(1 - c1 < EPS)
-    	t[1] = 0; // optimizing (perhaps prematurely
+    if(abs(1 - c1) < EPS)
+    	t[1] = 0; // optimizing (perhaps prematurely)
     else {
         t[1] = atan2(T[0], r_yz_ - A[1]) * (1 << _W); // WATCH: atan2 ignores scaling // TODO replace with LUT
     }
