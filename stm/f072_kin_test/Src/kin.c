@@ -28,9 +28,9 @@ void fwd_kin(int32_t *A, int32_t *q, int32_t *r) {
 uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     volatile int32_t rT = 0;
     for(uint8_t i = 0; i < 3; i++) {
-        rT += T[i] * T[i] >> _W;
+        rT += T[i] * T[i];
     }
-    rT = isqrt(rT) << _HW;
+    rT = isqrt(rT);
     volatile int32_t r_yz = isqrt(T[1] * T[1] + T[2] * T[2]); // WATCH multiply with sqrt
     volatile int32_t c1 = (r_yz << _W) / rT;
 
@@ -40,7 +40,7 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
 
 	volatile int32_t y;
 
-	if((1 << _W) - c1 < EPS) {
+	if(abs((1 << _W) - c1) < EPS) {
 		// degenerate case: in the y-z plane already, so solve directly
 		if(r_yz - r2 > r0 || r_yz + r2 < r0)
 			return 1; // outside of range
@@ -48,18 +48,19 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
 		y = (r0 * r0 - r1 * r1) / 2 / r_yz; // EXEMPT: * followed by /, along with distributivity
 	}
 	else {
+		// TODO: new control flow in full quadratic solution, debug why this isn't working properly.
 	    volatile int32_t pc[3] = {
 	        (1 << _TW) / (r1 * r1 >> _W) - (1 << _TW) / (r2 * r2 >> _W),
 			-2 * (r_yz << _W) / (r1 * r1 >> _W),
 			r0 * r0 / (r2 * r2 >> _W) + (r_yz * r_yz / (r1 * r1 >> _W)) - (1 << _W)
 	    };
-	    volatile int32_t det = pc[1] * pc[1] - 4 * pc[0] * pc[2] >> _W;
+	    volatile int32_t det = pc[1] * pc[1] - 4 * pc[0] * pc[2];
 	    if(det < 0)
 	        return 1;
 
-	    y = ((-pc[1] + (isqrt(det) << _HW)) << _W) / 2 / pc[0]; // WATCH: sqrt with divide
+	    y = ((-pc[1] + isqrt(det)) << _W) / 2 / pc[0]; // WATCH: sqrt with divide
 	    if(abs(y) > r0)
-	        y = ((-pc[1] - (isqrt(det) << _HW)) << _W) / 2 / pc[0];
+	        y = ((-pc[1] - isqrt(det)) << _W) / 2 / pc[0];
 	    if(abs(y) > r0)
 	        return 1;
 	}
@@ -78,7 +79,7 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
         t[1] = atan2(T[0], r_yz_ - A[1]) * (1 << _W); // WATCH: atan2 ignores scaling // TODO replace with LUT
     }
 
-    t[0] = (asin(((int32_t)((z << _W) / r0)) / (1 << _W)) + atan2((int32_t)T[2], T[1])) * (1 << _W); // WATCH: atan2 ignores scaling
+    t[0] = (asin((float)z / r0) + atan2((float)T[2], T[1])) * (float)(1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
     t[2] = (atan2(z, ((y - r_yz) << _W) / c1) + M_PI) * (1 << _W); // WATCH: atan2 ignores scaling
     if(t[2] > M_PI * (1 << _W))
     	t[2] -= 2 * M_PI * (1 << _W);
