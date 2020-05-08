@@ -15,7 +15,8 @@
 #define ALPHA 512 // UNFLOAT 2.0
 
 // Newton's method limit
-#define TIM_ITER_LIM 1
+#define TIM_ITER_LIM 16
+#define TIM_ITER_EPS 16384 // UNFLOAT 64
 
 // safety
 // n cycles time constant, defines threshold for PI thresholding, tied to filter coeff

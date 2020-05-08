@@ -109,9 +109,9 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 			for(i = 0; i < TIM_ITER_LIM; i++) {
 				int32_t dist = origin_dist_sq(a_, b_, c_, x);
 				int32_t delta = dist - R2;
-				if(abs(delta) < EPS)
+				if(abs(delta) < TIM_ITER_EPS)
 					break;
-				x -= delta / origin_dist_sq_p(a_, b_, c_, x); // head away if inside
+				x -= (delta << _W) / origin_dist_sq_p(a_, b_, c_, x); // head away if inside
 			}
 			if(i == TIM_ITER_LIM)
 				return 1;
