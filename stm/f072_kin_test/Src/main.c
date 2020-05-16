@@ -54,6 +54,10 @@
 /* USER CODE BEGIN PV */
 int16_t pos_dbl_buf[2][NUM_POS][3] = { 0 };
 volatile int16_t pos[NUM_POS][3] = { 0 };
+// TEMP
+volatile int16_t elog[NUM_ELOG][2] = { 0 };
+volatile uint16_t elog_idx = 0;
+
 uint8_t buf_fresh = 0;
 uint16_t tick_fin_buf = 0, tick_fin = 0, tick_cur = 0;
 int32_t A[4] = { 0, A1, A2, A3 };
@@ -77,8 +81,8 @@ const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
 // TEMP
 #define NUM_CART_POS 2
 int32_t Ts_[NUM_CART_POS][6] = {
-		{ 26, 0, A1 + A2 + A3 - 4, 0, 77, -77 },
-		{ -26, 0, A1 + A2 + A3 - 4, 0, -77, 77 },
+		{ A2, A1+20, -(A3-40), 0, 77, -77 },
+		{ -A2, A1+20, A3-40, 0, -77, 77 },
 };
 volatile uint8_t Ts_idx = 0;
 /* USER CODE END PV */
@@ -99,7 +103,7 @@ int32_t inter = 0;
   * @retval int
   */
 int main(void)
-{
+    {
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -131,9 +135,10 @@ int main(void)
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_Base_Start_IT(&htim3);
   htim3.Instance->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+  __HAL_TIM_SET_COUNTER(&htim1, -51);
 //  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, CCR_MID_HS);
 
-//  mcp1130_txrx();
+  mcp1130_txrx();
 //  uint8_t i = 0;
 //  while(i < NUM_POS) {
 //	  if(hspi1.State == HAL_SPI_STATE_READY) {
@@ -150,16 +155,16 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint16_t k = CCR_MID_HS, edge = 0;
+  uint16_t k = CCR_MID_DS, edge = 0;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-	  if(0) {
+	  {
 		  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET && !edge) {
-			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, k += 2);
+			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, k += 2);
 			  edge = 1;
 		  }
 		  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
@@ -168,12 +173,12 @@ int main(void)
 		  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, (k >> 1) & 1);
 	  }
 
-	  {
-//		  while(buf_fresh) {}; // TEMP
+	  if(0) {
+		  while(buf_fresh) {}; // TEMP
 		  int32_t max_tf = 0;
 		  int32_t t[3], v[3], tf[3], tbnd[2];
 		  uint8_t _converged = 1;
-		  if(!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t)) {
+		  if(!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0])) {
 			  for(uint8_t i = 0; i < 3 && _converged; i++) {
 				  uint8_t j = 0;
 				  for(int32_t v_ = Ts_[Ts_idx & (NUM_CART_POS - 1)][i + 3]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
@@ -196,14 +201,13 @@ int main(void)
 				  max_tf = tf[i];
 		  }
 
-		  tick_fin_buf = max_tf * 3 * TIM3_FREQ; // WATCH: TIM3_FREQ is base units
+		  tick_fin_buf = max_tf * 6 * TIM3_FREQ >> _W; // WATCH: TIM3_FREQ is base units
 		  if(_converged) {
 			  for(uint8_t i = 0; i < NUM_POS; i++) {
 				  for(uint8_t j = 0; j < 3; j++) {
-					  inter = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / NUM_POS) * PER_RADS[j]; // WATCH: NUM_POS and PER_RADS is base units
-					  int16_t pos_ = max(-RNG_DS, min(RNG_DS, inter >> _W)); // CONVERT
-					  pos_ *= RHR_SGNS[j];
-					  pos_dbl_buf[0][i][j] = pos_ < -RNGs[j] ? -RNGs[j] : (pos_ > RNGs[j] ? RNGs[j] : pos_);
+					  inter = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / (NUM_POS - 1)) * PER_RADS[j]; // WATCH: NUM_POS and PER_RADS is base units
+					  pos_dbl_buf[0][i][j] = max(-RNGs[j], min(RNGs[j], inter >> _W)) * RHR_SGNS[j]; // CONVERT
+					  // interestingly, the integer arithmetic introduces rounding-like errors, not only floor-like errors (e.g. skips up to 2)
 				  }
 			  }
 	//		  for(uint8_t i = 0

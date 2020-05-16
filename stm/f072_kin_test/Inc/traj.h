@@ -13,6 +13,7 @@
 // servo parameters //
 // overshoot scaling
 #define ALPHA 512 // UNFLOAT 2.0
+#define MAX_T_DEFAULT 0x7FFFFFFF
 
 // Newton's method limit
 #define TIM_ITER_LIM 16
@@ -35,7 +36,7 @@
 #define ERROR_FILT_COEFF_D 5
 
 #define ERROR_SCALE_HS_N 9
-#define ERROR_SCALE_HS_D 10
+#define ERROR_SCALE_HS_D 20
 
 // freefall filter for reset
 // n cycles time constant
@@ -60,20 +61,20 @@ typedef struct joint_phys_s {
 // Hitec D645
 #define T0_HS 4096 // UNFLOAT 16.0
 #define SMAX_HS 1577 // UNFLOAT 6.16
-#define I_HS 20480 // UNFLOAT 80
+#define I_HS 2048 // UNFLOAT 80
 
 #define CCR_PER_RAD_HS 220
 #define CCR_MID_HS 632
 #define RNG_HS 576
 #define SGN_HS -1
 
-#define POT_MID_HS 541
+#define POT_MID_HS 548
 #define POT_RNG_HS 590
 
 // DSServo 3218MG
 #define T0_DS 5120 // UNFLOAT 20.0
 #define SMAX_DS 1920 // UNFLOAT 7.5
-#define I_DS 7680 // UNFLOAT 30
+#define I_DS 768 // UNFLOAT 30
 #define CCR_PER_RAD_DS 252
 #define CCR_MID_DS 588
 #define RNG_DS 864
@@ -85,16 +86,21 @@ typedef struct joint_phys_s {
 // Hobbywing
 #define T0_HW 355840 // UNFLOAT 1390
 #define SMAX_HW 350 // UNFLOAT 1.37
-#define I_HW 25600 // UNFLOAT 100
+#define I_HW 2560 // UNFLOAT 100
 #define RNG_HW 200
+#define HW_P_N 7
+#define HW_P_D 5
+#define HW_I_N 2
+#define HW_I_D 11
 // ccr/rad/s _unloaded_
 #define CCR_PER_RAD_S_HW 4 // UNFLOAT 0.01363
+#define TICKS_PER_RAD_HW 33
 #define GEAR_RATIO_HW 51
 #define DEADBAND_HW 14
 #define CCR_MID_HW 562
 #define SGN_HW 1
 //temp
-#define MAX_CCR_HW 10
+#define MAX_CCR_HW 20
 #define P_HW_N 1
 #define P_HW_D 3
 

@@ -73,9 +73,13 @@ void mcp1130_txrx(void);
 #define TCK_Pin GPIO_PIN_14
 #define TCK_GPIO_Port GPIOA
 /* USER CODE BEGIN Private defines */
-#define NUM_POS 64
+#define NUM_POS 128
 #define NUM_POS_MSK 0x3F
 #define NUM_POS_Pos 6
+
+// TEMP
+#define NUM_ELOG 2049
+#define NUM_ELOG_MSK 0x7FF
 
 #define TRAJ_ITER_LIM 8
 

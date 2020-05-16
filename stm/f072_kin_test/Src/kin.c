@@ -25,7 +25,7 @@ void fwd_kin(int32_t *A, int32_t *q, int32_t *r) {
     r[1] = (c[0] * v >> _W) - ((A[3] * s[0] >> _W) * s[2] >> _W);
     r[2] = (s[0] * v >> _W) + ((A[3] * c[0] >> _W) * s[2] >> _W);
 }
-uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
+uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t, int32_t prev_t0) {
     volatile int32_t rT = 0;
     for(uint8_t i = 0; i < 3; i++) {
         rT += T[i] * T[i];
@@ -76,11 +76,27 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     if(abs(1 - c1) < EPS)
     	t[1] = 0; // optimizing (perhaps prematurely)
     else {
-        t[1] = atan2(T[0], r_yz_ - A[1]) * (1 << _W); // WATCH: atan2 ignores scaling // TODO replace with LUT
+        t[1] = (int32_t)(atan2((float)T[0], r_yz_ - A[1]) * (1 << _W)); // WATCH: atan2 ignores scaling // TODO replace with LUT
     }
 
-    t[0] = (asin((float)z / r0) + atan2((float)T[2], T[1])) * (float)(1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
-    t[2] = (atan2(z, ((y - r_yz) << _W) / c1) + M_PI) * (1 << _W); // WATCH: atan2 ignores scaling
+    volatile int32_t dt0 = asin((float)z / r0) * (1L << _W);
+    volatile int32_t t0_base = atan2((float)T[2], T[1]) * (1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
+    int8_t sgns[2] = { 1, -1 };
+    int8_t sgn;
+    int32_t t0s[2] = {
+    	t0_base + sgns[0] * dt0,
+		t0_base + sgns[1] * dt0
+    };
+    if(abs(t0s[0] - prev_t0) < abs(t0s[1] - prev_t0)) {
+    	t[0] = t0s[0];
+    	sgn = sgns[0];
+    }
+    else {
+    	t[0] = t0s[1];
+    	sgn = sgns[1];
+    }
+
+    t[2] = (int32_t)((atan2((float)(z * sgn), ((y - r_yz) << _W) / c1) + M_PI) * (1 << _W)); // WATCH: atan2 ignores scaling
     if(t[2] > M_PI * (1 << _W))
     	t[2] -= 2 * M_PI * (1 << _W);
     return 0;

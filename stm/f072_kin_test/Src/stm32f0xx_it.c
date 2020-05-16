@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "traj.h"
+#include "consts.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,10 +49,13 @@ typedef enum motion_state_t_e {
 /* USER CODE BEGIN PV */
 extern int16_t pos_dbl_buf[2][NUM_POS][3];
 extern volatile int16_t pos[NUM_POS][3];
+extern volatile int16_t elog[NUM_ELOG][2];
+extern volatile uint16_t elog_idx;
 extern const uint16_t MIDs[3];
 extern volatile uint8_t Ts_idx, buf_fresh;
 extern uint16_t tick_fin, tick_fin_buf, tick_cur;
 // TODO expand these to all the joints
+volatile int32_t hw_state = 0;
 volatile int32_t I_safety = 0, ERROR_safety = 0;
 volatile uint16_t I_safety_buf = 0, ERROR_safety_buf = 0;
 volatile motion_state_t motion_state = RUN;
@@ -189,26 +193,37 @@ void TIM3_IRQHandler(void)
 				Ts_idx++;
 				buf_fresh = 0;
 				tick_cur = 0;
-				tick_fin = 0;
+				tick_fin = tick_fin_buf;
 			}
 		}
 		if(tick_cur < tick_fin) {
 			for(uint8_t i = 1; i < 3; i++) {
-				__HAL_TIM_SET_COMPARE(&htim3, chs[i], MIDs[i] + (pos[tick][i] << 1));
+//				__HAL_TIM_SET_COMPARE(&htim3, chs[i], MIDs[i] + (pos[tick][i] << 1));
 			}
 			tick_cur++;
-			//P[D?] controller for Hobbywing
-			int16_t delta = ((pos[tick][0] + ((int16_t)TIM1->CNT)) * P_HW_N) / P_HW_D; // pos[tick][0]
+			// PI controller for Hobbywing
+			int16_t delta = ((pos[tick][0] * TICKS_PER_RAD_HW >> _W) - (int16_t)TIM1->CNT) * HW_P_N / HW_P_D; // pos[tick][0]
 			delta = delta < -MAX_CCR_HW ? -MAX_CCR_HW : (delta > MAX_CCR_HW ? MAX_CCR_HW : delta);
-			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, CCR_MID_HW + sgn(delta) * DEADBAND_HW + delta);
+			hw_state = delta + (hw_state * HW_I_N / HW_I_D);
+//			__HAL_TIM_SET_COMPARE(&htim3, chs[0], CCR_MID_HW + sgn(hw_state) * DEADBAND_HW + hw_state);
 
 			if(abs(delta) < 4) {
 				delta++;
 			}
 
 			if(spi_valid >= 2) {
+
 				// TODO generalize over all joints
-				error = (pos[tick > 0 ? tick - 1 : 0][0] << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
+				uint16_t pos_ = pos[tick > 0 ? tick - 1 : 0][1];
+				error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
+
+				{
+					// TEMP
+					elog[elog_idx & NUM_ELOG_MSK][0] = pos_;
+					elog[elog_idx & NUM_ELOG_MSK][1] = ERROR_safety_buf - POT_MID_HS;
+					elog_idx++;
+				}
+
 				I_safety = I_safety_buf + (I_safety * I_FILT_COEFF_N) / I_FILT_COEFF_D;
 				ERROR_safety = error + (ERROR_safety * ERROR_FILT_COEFF_N) / ERROR_FILT_COEFF_D;
 				if(abs(I_safety) > I_MAX_N || abs(ERROR_safety) > ERROR_MAX_N) {

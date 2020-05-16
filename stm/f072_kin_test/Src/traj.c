@@ -53,10 +53,13 @@ static int32_t quadp(int32_t a, int32_t b, int32_t c, int32_t x) {
 }
 static int32_t origin_dist_sq(int32_t a, int32_t b, int32_t c, int32_t x) {
 	int32_t y = quad(a, b, c, x);
-	return (y*y >> _W) + (x*x >> _W);
+	int32_t y_hw = (y >> _HW); // pre-adjust because this result could be huge
+	return (y_hw * y_hw) + (x*x >> _W);
 }
 static int32_t origin_dist_sq_p(int32_t a, int32_t b, int32_t c, int32_t x) {
-	return 2 * ((quad(a, b, c, x) * quadp(a, b, c, x) >> _W) + x);
+	int32_t q_hw = quad(a, b, c, x) >> _HW;
+	int32_t qp_hw = quadp(a, b, c, x) >> _HW;
+	return 2 * (q_hw * qp_hw + x);
 }
 static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *phys, int32_t t_default) {
 	int32_t a = ts[0], b = ts[1];
@@ -94,15 +97,15 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 			cbnd(xs, xs_);
 		}
 		else {
-			int32_t k_ = (phys->SMAX << _W) / phys->T0;
-			int32_t mid_ = (-c << _W) / d;
-			int32_t a_ = ((b * k_ >> _W) * k_ >> _W);
-			int32_t b_ = (b * 2 * k_ >> _W) * mid_ >> _W;
-			int32_t c_ = ((mid_ * mid_ >> _W) * b >> _W) + a;
+			volatile int32_t k_ = (phys->SMAX << _W) / phys->T0;
+			volatile int32_t mid_ = (-c << _W) / d;
+			volatile int32_t a_ = ((b * k_ >> _W) * k_ >> _W);
+			volatile int32_t b_ = (b * 2 * k_ >> _W) * mid_ >> _W;
+			volatile int32_t c_ = ((mid_ * mid_ >> _W) * b >> _W) + a;
 
-			int32_t R2 = phys->T0 * phys->T0 >> _W;
+			volatile int32_t R2 = phys->T0 * phys->T0 >> _W;
 
-			int32_t x = phys->T0;
+			volatile int32_t x = phys->T0;
 			// easiest way... is sadly numerical root finding.
 			// pros: easy to make into integer algorithm
 			uint8_t i;
@@ -111,7 +114,7 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 				int32_t delta = dist - R2;
 				if(abs(delta) < TIM_ITER_EPS)
 					break;
-				x -= (delta << _W) / origin_dist_sq_p(a_, b_, c_, x); // head away if inside
+				x -= delta / (origin_dist_sq_p(a_, b_, c_, x) >> _W); // head away if inside
 			}
 			if(i == TIM_ITER_LIM)
 				return 1;
@@ -134,7 +137,8 @@ uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joi
 	int32_t rv[2][2] = {{432*v1 >> _W, -176*vm >> _W}, {432*v1 >> _W, vm}}; // UNFLOAT 0.6875, 1.6875
 	int32_t rt[2] = {(864*((phys->I)*v1 >> _W) >> _W)*vtf[1] >> _W, (864*((phys->I)*vtf[1] >> _W) >> _W)*vm >> _W}; // UNFLOAT 3.375
 	bnd[0] = -1; bnd[1] = -1;
-	return populate(lv, lt, bnd, phys, (ALPHA << _W) / v0) || populate(rv, rt, bnd, phys, (ALPHA << _W) / v1);
+
+	return populate(lv, lt, bnd, phys, v0 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v0) || populate(rv, rt, bnd, phys, v1 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v1);
 }
 int32_t lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t) {
 	int32_t av_ = max(abs(av), (1 << _TW) / tf);
@@ -143,10 +147,10 @@ int32_t lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t
 	int32_t l = ((av * t >> _W) + a);
 	int32_t m = (b - a) * t / tf + a; // EXEMPT: * followed by /
 	int32_t r = ((bv * (t - tf) >> _W) + b);
-	if(t < (ALPHA << _W) / av_ && t >= (tf - ALPHA / bv_)) {
+	if(t < (ALPHA << _W) / av_ && t >= (tf - (ALPHA << _W) / bv_)) {
 		int32_t s0 = smoothstep(t * av_ / ALPHA); // EXEMPT: * followed by /
 		int32_t s1 = smoothstep((tf - t) * bv_ / ALPHA); // EXEMPT: * followed by /
-		int32_t s2 = t / tf;
+		int32_t s2 = (t << _W) / tf;
 		return (((l * ((1 << _W) - s0) + m * s0) >> _W) * ((1 << _W) - s2) >> _W) + (((r * ((1 << _W) - s1) + m * s1) >> _W) * s2 >> _W); // GROUPED: distributive */+
 	}
 	else if(t < (ALPHA << _W) / av_) {
@@ -157,7 +161,7 @@ int32_t lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t
 		return m;
 	}
 	else {
-		int32_t s = smoothstep((tf - t) * bv_ / ALPHA);
+		int32_t s = smoothstep((tf - t) * bv_ / ALPHA); // EXEMPT: * followed by /
 		return r * ((1 << _W) - s) + m * s >> _W;
 	}
 }
