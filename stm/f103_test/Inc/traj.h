@@ -8,6 +8,7 @@
 #ifndef TRAJ_H_
 #define TRAJ_H_
 #include <stdint.h>
+#include "consts.h"
 
 
 // servo parameters //
@@ -57,6 +58,9 @@ typedef struct joint_phys_s {
 	int32_t I;
 } joint_phys_t;
 
+#define G_256 2509
+#define M_TOT_256 256 // kg
+
 // MOI units are in kg-cm
 // Hitec D645
 #define T0_HS 4096 // UNFLOAT 16.0
@@ -64,7 +68,7 @@ typedef struct joint_phys_s {
 #define I_HS 2048 // UNFLOAT 80
 
 #define CCR_PER_RAD_HS 220
-#define CCR_MID_HS 632
+#define CCR_MID_HS 600
 #define RNG_HS 576
 #define SGN_HS -1
 
@@ -84,23 +88,46 @@ typedef struct joint_phys_s {
 #define POT_HIGH_DS 1024
 
 // Hobbywing
-#define T0_HW 355840 // UNFLOAT 1390
-#define SMAX_HW 350 // UNFLOAT 1.37
-#define I_HW 2560 // UNFLOAT 100
-#define RNG_HW 200
-#define HW_P_N 7
-#define HW_P_D 5
-#define HW_I_N 2
-#define HW_I_D 11
+#define T0_HW 36310 // UNFLOAT 142 // kg-cm
+#define SMAX_HW 350 // UNFLOAT 1.37 // rad/s
+#define I_HW 2560 // UNFLOAT 50 // kg-cm
+
+// expressed in units of T0's per radian
+// regions are right-hand bounds of angle
+#define HW_D_N_0 3
+#define HW_D_D_0 19
+#define HW_P_N_0 8
+#define HW_P_D_0 13
+#define HW_I_N_0 8
+#define HW_I_D_0 35
+#define HW_P_REGION_0 (-TICKS_PER_RAD_HW * 4 / 7) // -(pi - 2) / 2 radians
+
+#define HW_D_N_1 3
+#define HW_D_D_1 19
+#define HW_P_N_1 2
+#define HW_P_D_1 29
+#define HW_I_N_1 4
+#define HW_I_D_1 60
+#define HW_P_REGION_1 (TICKS_PER_RAD_HW * 4 / 7) // +(pi - 2) / 2 radians
+
+#define HW_D_N_2 3
+#define HW_D_D_2 19
+#define HW_P_N_2 7
+#define HW_P_D_2 13
+#define HW_I_N_2 7
+#define HW_I_D_2 32
+
 // ccr/rad/s _unloaded_
 #define CCR_PER_RAD_S_HW 4 // UNFLOAT 0.01363
+#define RNG_HW (SMAX_HW * CCR_PER_RAD_S_HW * GEAR_RATIO_HW >> _W)
+#define S_TRANSITION_HW 100 // units of rad-s-256
 #define TICKS_PER_RAD_HW 33
 #define GEAR_RATIO_HW 51
 #define DEADBAND_HW 14
 #define CCR_MID_HW 562
 #define SGN_HW 1
 //temp
-#define MAX_CCR_HW 20
+#define MAX_CCR_HW 30
 #define P_HW_N 1
 #define P_HW_D 3
 

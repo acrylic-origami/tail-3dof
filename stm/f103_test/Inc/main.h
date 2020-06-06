@@ -54,12 +54,16 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void mcp1130_txrx(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
 #define LD_Pin GPIO_PIN_13
 #define LD_GPIO_Port GPIOC
+#define SERVO1_NSEL_Pin GPIO_PIN_8
+#define SERVO1_NSEL_GPIO_Port GPIOA
+#define SERVO2_NSEL_Pin GPIO_PIN_9
+#define SERVO2_NSEL_GPIO_Port GPIOA
 #define LIMSW1_Pin GPIO_PIN_11
 #define LIMSW1_GPIO_Port GPIOA
 #define LIMSW1_EXTI_IRQn EXTI15_10_IRQn
@@ -79,7 +83,7 @@ void Error_Handler(void);
 
 #define TRAJ_ITER_LIM 8
 
-#define TIM3_FREQ 50
+#define TIM2_FREQ 50
 
 #define MCP3002_CONFIG (0b11010000 << 8)
 #define MCP3002_ODD_SIGN_Pos 13

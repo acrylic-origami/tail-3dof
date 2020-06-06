@@ -35,6 +35,7 @@
 #include "consts.h"
 #include "math_util.h"
 #include "as1130.h"
+#include <math.h>
 #include <string.h>
 
 /* USER CODE END Includes */
@@ -81,7 +82,7 @@ const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
 // TEMP
 #define NUM_CART_POS 2
 int32_t Ts_[NUM_CART_POS][6] = {
-		{-20, A1 + A2 + A3 - 40, 0, 0, 77, -77}, // { A2, A1+20, -(A3-40), 0, 77, -77 },
+		{-20, A1 + A2 + A3 - 40, 0, 0, -77, -77}, // { A2, A1+20, -(A3-40), 0, 77, -77 },
 		{20, A1 + A2 + A3 - 40, 0, 0, -77, 77}, // { -A2, A1+20, A3-40, 0, -77, 77 },
 };
 volatile uint8_t Ts_idx = 0;
@@ -118,10 +119,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
-
-  /* Use systick as time base source and configure 1ms tick (default clock after Reset is HSI) */
-  HAL_InitTick(TICK_INT_PRIORITY);
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -138,18 +136,19 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_I2C1_Init();
-  MX_SPI1_Init();
   MX_SPI2_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_USART3_UART_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start(&htim3);
   HAL_TIM_Base_Start(&htim4);
 
-  AS1130_Init();
+//  AS1130_Init();
 
   htim2.Instance->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
   htim3.Instance->CCER |= TIM_CCER_CC2E;
@@ -158,8 +157,18 @@ int main(void)
   // TODO softer startup routine by reading from servo pot ADC and slow-driving them to center
   HAL_GPIO_WritePin(SERVO1_GPIO_Port, SERVO1_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(SERVO2_GPIO_Port, SERVO2_Pin, GPIO_PIN_SET);
-  __HAL_TIM_SET_COUNTER(&htim4, 51);
 
+  HAL_GPIO_WritePin(SERVO1_NSEL_GPIO_Port, SERVO1_NSEL_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_RESET);
+  __HAL_TIM_SET_COUNTER(&htim4, -51);
+
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, (CCR_MID_HS));
+//  for(int8_t i = 0; i < 64; i++) {
+//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, (CCR_MID_HS + (RNG_HS + 300) / 2) - ((RNG_HS + 300) * abs(32 - i)) / 32);
+//	  HAL_Delay(100);
+//  }
+
+  mcp1130_txrx();
   uart_rx();
 
   /* USER CODE END 2 */
@@ -172,7 +181,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  {
+	  if(0) {
 		  for(uint8_t i = 0; i < 132; i++) {
 			  if(hi2c1.State == HAL_I2C_STATE_READY) {
 		//	  		  px[(i >> 3) + 1] |= 1 << (i & 7);
@@ -196,17 +205,34 @@ int main(void)
 		  }
 	  }
 
+//	  for(uint8_t i = 0; i < 40; i++) {
+//		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW + DEADBAND_HW + i);
+//	  }
+//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW);
+
 	  if(0) {
-		  while(buf_fresh && !uart_buf_fresh) {}; // TEMP
+		  while(buf_fresh) {
+			  // low-priority actions
+
+			  // total YZ moment of inertia calculation
+			  int32_t t_cur[3];
+			  fwd_kin(A, pos[NUM_POS], t_cur);
+//			  I_YZ = isqrt(t_cur[1] * t_cur[1] + t_cur[2] * t_cur[2]) / 2 * M_TOT_256;
+		  }; // TEMP // !uart_buf_fresh
 
 		  HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
 		  int32_t max_tf = 0;
-		  int32_t t[3], v[3], tf[3], tbnd[2];
+		  int32_t t[3], v[3], tf[3], tbnd[2], tp[3];
+		  float tp_[3];
 		  uint8_t _converged = 1;
-		  if(!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0])) {
+		  if(!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
+			  for(uint8_t i = 0; i < 3; i++) {
+				  tp[i] = (int32_t)(tp_[i] * (1 << _W));
+			  }
+
 			  for(uint8_t i = 0; i < 3 && _converged; i++) {
 				  uint8_t j = 0;
-				  for(int32_t v_ = Ts_[Ts_idx & (NUM_CART_POS - 1)][i + 3]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
+				  for(int32_t v_ = tp[i]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
 					  if(!traj_t(t_prev[i], t[i], vf_prev[i], v_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
 						  tf[i] = (1 << _TW) / tbnd[1];
 						  v[i] = v_;
@@ -226,12 +252,11 @@ int main(void)
 				  max_tf = tf[i];
 		  }
 
-		  tick_fin_buf = max_tf * 6 * TIM3_FREQ >> _W; // WATCH: TIM3_FREQ is base units
+		  tick_fin_buf = max_tf * 6 * TIM2_FREQ >> _W; // WATCH: TIM3_FREQ is base units
 		  if(_converged) {
 			  for(uint8_t i = 0; i < NUM_POS; i++) {
 				  for(uint8_t j = 0; j < 3; j++) {
-					  int32_t inter = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / (NUM_POS - 1)) * PER_RADS[j]; // WATCH: NUM_POS and PER_RADS is base units
-					  pos_dbl_buf[0][i][j] = max(-RNGs[j], min(RNGs[j], inter >> _W)) * RHR_SGNS[j]; // CONVERT
+					  pos_dbl_buf[0][i][j] = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / (NUM_POS - 1)); // WATCH: NUM_POS and PER_RADS is natural units
 					  // interestingly, the integer arithmetic introduces rounding-like errors, not only floor-like errors (e.g. skips up to 2)
 				  }
 			  }
@@ -292,13 +317,13 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 void mcp1130_txrx() {
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_SET);
 	asm("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;"); // try to guarantee at least 330ns of hold time
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_RESET);
 	asm("nop;nop;nop;nop;nop;"); // try to guarantee at least 100/0.96 ns of hold time
 	mcp1130_mosi = MCP3002_CONFIG | (mcp1130_ch << MCP3002_ODD_SIGN_Pos);
-	uint16_t *rx = mcp1130_ch ? &ERROR_safety_buf : &I_safety_buf;
-	HAL_SPI_TransmitReceive_IT(&hspi1, &mcp1130_mosi, rx, 1);
+	volatile uint16_t *rx = mcp1130_ch ? &ERROR_safety_buf : &I_safety_buf;
+	HAL_SPI_TransmitReceive_IT(&hspi2, &mcp1130_mosi, rx, 1);
 }
 
 /* USER CODE END 4 */
