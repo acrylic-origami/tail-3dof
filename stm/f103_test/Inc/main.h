@@ -60,6 +60,18 @@ void mcp1130_txrx(void);
 /* Private defines -----------------------------------------------------------*/
 #define LD_Pin GPIO_PIN_13
 #define LD_GPIO_Port GPIOC
+#define TIM2_J1_PWM_Pin GPIO_PIN_0
+#define TIM2_J1_PWM_GPIO_Port GPIOA
+#define TIM2_J2_PWM_Pin GPIO_PIN_1
+#define TIM2_J2_PWM_GPIO_Port GPIOA
+#define TIM2_J0_PWM_Pin GPIO_PIN_2
+#define TIM2_J0_PWM_GPIO_Port GPIOA
+#define Xin_Pin GPIO_PIN_3
+#define Xin_GPIO_Port GPIOA
+#define Zin_Pin GPIO_PIN_0
+#define Zin_GPIO_Port GPIOB
+#define Yin_Pin GPIO_PIN_1
+#define Yin_GPIO_Port GPIOB
 #define SERVO1_NSEL_Pin GPIO_PIN_8
 #define SERVO1_NSEL_GPIO_Port GPIOA
 #define SERVO2_NSEL_Pin GPIO_PIN_9
@@ -75,6 +87,11 @@ void mcp1130_txrx(void);
 #define SERVO2_Pin GPIO_PIN_3
 #define SERVO2_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
+#define NUM_HAND_CTRL_BUF 64
+#define NUM_HAND_CTRL_AX 3
+#define HAND_CTRL_BUF_DS 2 // downsampling factor (simple skipping)
+#define HAND_CTRL_DEADBAND 3
+
 #define NUM_POS 128
 #define NUM_POS_MSK 0x3F
 #define NUM_POS_Pos 6

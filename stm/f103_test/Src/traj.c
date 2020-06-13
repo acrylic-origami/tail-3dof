@@ -65,7 +65,6 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 	int32_t a = ts[0], b = ts[1];
 	for(uint8_t i = 0; i < 2; i++) {
 		int32_t c = vs[i * 2], d = vs[i * 2 + 1];
-		int8_t A[2] = { 1, -1 };
 		int32_t xs[2] = { -1, -1 };
 		uint8_t corners[2] = { abs(b) < EPS, abs(d) < EPS };
 		if(corners[0] && corners[1]) {
@@ -93,7 +92,7 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 				return 1;
 			}
 			int32_t xs_[2] = { ((s - c) << _W) / d, (-(s + c) << _W) / d };
-			int32_t xs__[2] = { min(xs_[0], xs_[1]), min(xs_[0], xs_[1]) };
+//			int32_t xs__[2] = { min(xs_[0], xs_[1]), min(xs_[0], xs_[1]) };
 			cbnd(xs, xs_);
 		}
 		else {

@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include "traj.h"
 #include "kin.h"
+//#include "adc.h"
 #include "consts.h"
 #include "math_util.h"
 #include "imath.h"
@@ -51,14 +52,14 @@ typedef enum motion_state_t_e {
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-extern TIM_HandleTypeDef htim4;
+extern ADC_HandleTypeDef hadc1;
 
 extern int16_t pos_dbl_buf[2][NUM_POS][3];
 extern const uint16_t RNGs[3];
 extern const uint16_t PER_RADS[3];
 extern const int8_t RHR_SGNS[3];
 extern volatile int16_t pos[NUM_POS][3];
-extern volatile uint8_t Ts_idx, buf_fresh;
+extern uint8_t _buf_fresh, _con_empty_fresh;
 extern const uint16_t MIDs[3];
 extern uint16_t tick_fin, tick_fin_buf, tick_cur;
 // TODO expand these to all the joints
@@ -66,16 +67,12 @@ extern uint16_t tick_fin, tick_fin_buf, tick_cur;
 // ENSURE: all of these remain in natural units
 // will use 256-units in the T0 equation, since the output
 // is a fraction of a T0
-#define MAX_HW_INTEG 1650 // 1rad for 1s
-volatile int32_t hw_integ = 0;
+//#define MAX_HW_INTEG 1650 // 1rad for 1s
+//volatile int32_t hw_integ = 0;
 
-#define NUM_HW_D_COEF 4 // ENSURE: power of 2
 const int32_t D_COEF[NUM_HW_D_COEF] = { -85, 384, -768, 469 }; // back to front, 256-units
-volatile int32_t hw_deriv_buf[NUM_HW_D_COEF] = { 0 };
-volatile uint8_t hw_deriv_buf_idx = 0;
-const int32_t HW_P[][2] = { { HW_P_N_0, HW_P_D_0 }, { HW_P_N_1, HW_P_D_1 }, { HW_P_N_2, HW_P_D_2 } };
-const int32_t HW_I[][2] = { { HW_I_N_0, HW_I_D_0 }, { HW_I_N_1, HW_I_D_1 }, { HW_I_N_2, HW_I_D_2 } };
-const int32_t HW_D[][2] = { { HW_D_N_0, HW_D_D_0 }, { HW_D_N_1, HW_D_D_1 }, { HW_D_N_2, HW_D_D_2 } };
+//volatile int32_t hw_deriv_buf[NUM_HW_D_COEF] = { 0 };
+//volatile uint8_t hw_deriv_buf_idx = 0;
 
 volatile int32_t I_safety = 0, ERROR_safety = 0;
 volatile uint16_t I_safety_buf = 0, ERROR_safety_buf = 0;
@@ -83,9 +80,7 @@ volatile motion_state_t motion_state = RUN;
 volatile uint8_t mcp1130_ch = 1;
 volatile uint16_t mcp1130_mosi = 0;
 
-extern uint8_t uart_buf_in[UART_BUF_SIZE];
-extern volatile uint32_t uart_buf[UART_BUF_SIZE];
-extern volatile uint8_t uart_buf_fresh;
+//extern uint8_t uart_buf_in[UART_BUF_SIZE];
 
 // TEMP
 volatile int16_t error;
@@ -105,7 +100,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern DMA_HandleTypeDef hdma_memtomem_dma1_channel1;
+extern DMA_HandleTypeDef hdma_adc1;
+extern ADC_HandleTypeDef hadc1;
+extern DMA_HandleTypeDef hdma_memtomem_dma1_channel2;
 extern I2C_HandleTypeDef hi2c1;
 extern SPI_HandleTypeDef hspi2;
 extern TIM_HandleTypeDef htim2;
@@ -258,10 +255,38 @@ void DMA1_Channel1_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
 
   /* USER CODE END DMA1_Channel1_IRQn 0 */
-  HAL_DMA_IRQHandler(&hdma_memtomem_dma1_channel1);
+  HAL_DMA_IRQHandler(&hdma_adc1);
   /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
 
   /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel2 global interrupt.
+  */
+void DMA1_Channel2_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel2_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_memtomem_dma1_channel2);
+  /* USER CODE BEGIN DMA1_Channel2_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles ADC1 and ADC2 global interrupts.
+  */
+void ADC1_2_IRQHandler(void)
+{
+  /* USER CODE BEGIN ADC1_2_IRQn 0 */
+
+  /* USER CODE END ADC1_2_IRQn 0 */
+  HAL_ADC_IRQHandler(&hadc1);
+  /* USER CODE BEGIN ADC1_2_IRQn 1 */
+
+  /* USER CODE END ADC1_2_IRQn 1 */
 }
 
 /**
@@ -333,15 +358,15 @@ void SPI2_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
-	if(huart3.ErrorCode == HAL_UART_ERROR_NONE) {
-		if(uart_buf_in[UART_BUF_SIZE - 1] == 0xFF) {
-			uart_buf_fresh = 1;
-			HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
-			for(uint8_t i = 0; i < UART_BUF_SIZE - 1; i++) {
-				uart_buf[i] = ((int8_t)uart_buf_in[i]) * (int32_t)(A1 + A2 + A3);
-			}
-		}
-	}
+//	if(huart3.ErrorCode == HAL_UART_ERROR_NONE) {
+//		if(uart_buf_in[UART_BUF_SIZE - 1] == 0xFF) {
+//			uart__buf_fresh = 1;
+//			HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
+//			for(uint8_t i = 0; i < UART_BUF_SIZE - 1; i++) {
+//				uart_buf[i] = ((int8_t)uart_buf_in[i]) * (int32_t)(A1 + A2 + A3);
+//			}
+//		}
+//	}
 	if(huart3.RxState == HAL_UART_STATE_READY) {
 		uart_rx();
 	}
@@ -368,105 +393,23 @@ void EXTI15_10_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+int16_t uart_buf[6];
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if(htim->Instance == TIM2) {
-		uint16_t tick = ((uint16_t)tick_cur * NUM_POS) / tick_fin;
+		uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
 		uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
 		tick = tick >= NUM_POS ? NUM_POS - 1 : tick;
 		switch(motion_state) {
 		case RUN: {
-			if(buf_fresh) {
-				if(buf_fresh && tick_cur >= tick_fin && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel1, &pos_dbl_buf[1], pos, sizeof(pos[0][0]) * NUM_POS * 3) == HAL_OK) {
-					Ts_idx++;
-					buf_fresh = 0;
-					tick_cur = 0;
-					tick_fin = tick_fin_buf;
-				}
-			}
-
-			// PI controller for Hobbywing
-			{
-				int16_t hw_theta = __HAL_TIM_GET_COUNTER(&htim4); // units: ticks
-				int16_t hw_theta_targ = pos[tick][0];
-				int16_t hw_delta = (hw_theta_targ * TICKS_PER_RAD_HW >> _W) - hw_theta; // units: ticks
-
-				uint8_t region = 0;
-				if(hw_theta < HW_P_REGION_0)
-					region = 0;
-				else if(hw_theta < HW_P_REGION_1)
-					region = 1;
-				else
-					region = 2;
-
-				uint8_t targ_region = 0;
-				if(hw_theta_targ < HW_P_REGION_0)
-					targ_region = 0;
-				else if(hw_theta_targ < HW_P_REGION_1)
-					targ_region = 1;
-				else
-					targ_region = 2;
-
-				int32_t T_load = -((((int16_t)icos((hw_theta * 0x3F) / GEAR_RATIO_HW) << 1)) * I_HW >> _W); // kg-cm-256
-				// NOTE: a bit of a coincidence, if switching motors need to change GEAR_RATIO_HW to
-				// match hall sensor spacing
-				hw_deriv_buf[(hw_deriv_buf_idx++) & (NUM_HW_D_COEF - 1)] = hw_delta;
-				int32_t hw_deriv = 0;
-				for(uint8_t i = 0; i < NUM_HW_D_COEF; i++) {
-					hw_deriv += hw_deriv_buf[(hw_deriv_buf_idx + i) & (NUM_HW_D_COEF - 1)] * D_COEF[i];
-				}
-				hw_deriv >>= _W;
-
-				int32_t hw_ccr;
-				if(region != targ_region) {
-					// target velocity, with feedback to the derivative
-					hw_ccr = (S_TRANSITION_HW * RNG_HW) / SMAX_HW * sgn(hw_theta_targ - hw_theta) - (T_load * RNG_HW) / T0_HW;
-				}
-				else {
-					int32_t T_offset = -(hw_deriv * T0_HW / SMAX_HW << _W) / TICKS_PER_RAD_HW / TIM2_FREQ; // kg-m-256
-					//
-					int32_t baseline_ccr = (-(T_load + T_offset) * RNG_HW) / T0_HW;
-
-					hw_integ += hw_delta; // units: ticks
-					hw_integ = max(-MAX_HW_INTEG, min(MAX_HW_INTEG, hw_integ));
-
-					// ENSURE: first multiplication is with RNG_HW
-					// to avoid catastrophic cancellation
-					// (these are in fractions of T0 after all)
-
-					hw_ccr =
-						baseline_ccr
-					  + (
-							(hw_integ * RNG_HW * HW_I[region][0]) / HW_I[region][1] / TIM2_FREQ
-						  + (hw_delta * RNG_HW * HW_P[region][0]) / HW_P[region][1]
-//						  + (hw_deriv * RNG_HW * HW_D[region][0] * TIM2_FREQ) / HW_D[region][1]
-		                ) / TICKS_PER_RAD_HW; // all the hw_* are in units of ticks: need to convert to rads
-
-
-					{
-						uartb[0] = (hw_delta * RNG_HW * HW_P[region][0]) / HW_P[region][1] / TICKS_PER_RAD_HW;
-						uartb[1] = (hw_integ * RNG_HW * HW_I[region][0]) / HW_I[region][1] / TIM2_FREQ / TICKS_PER_RAD_HW;
-						uartb[2] = T_load >> 8;
-						uartb[3] = T_offset >> 8;
-						uartb[4] = hw_ccr;
-						uartb[5] = hw_theta;
-						HAL_UART_Transmit_IT(&huart3, uartb, 6);
-					}
-				}
-				hw_ccr = max(-MAX_CCR_HW, min(MAX_CCR_HW, hw_ccr));
-//				__HAL_TIM_SET_COMPARE(&htim2, chs[0], CCR_MID_HW + sgn(hw_ccr) * DEADBAND_HW + hw_ccr);
-			}
-
-			if(tick_cur < tick_fin) {
-				for(uint8_t i = 1; i < 2; i++) {
-					int16_t pos_ = ((pos[tick][i] * PER_RADS[i]) >> (_W - 1)) * RHR_SGNS[i]; // CONVERT
+			if(tick_cur <= tick_fin) {
+				for(uint8_t i = 0; i < 3; i++) {
+					int16_t pos_ = ((pos[tick][i] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
 					pos_ = max(-RNGs[i], min(RNGs[i], pos_));
-//					__HAL_TIM_SET_COMPARE(&htim2, chs[i], MIDs[i] + pos_);
+					__HAL_TIM_SET_COMPARE(&htim2, chs[i], MIDs[i] + pos_);
 				}
 				tick_cur++;
 
 				if(spi_valid >= 2) {
-
-					// TODO generalize over all joints
 					uint16_t pos_ = pos[tick > 0 ? tick - 1 : 0][1];
 					error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
 
@@ -487,6 +430,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 					}
 				}
 			}
+			else {
+				if(_buf_fresh && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel2, &pos_dbl_buf[1][0][0], pos, sizeof(pos[0][0]) * NUM_POS * 3) == HAL_OK) {
+					for(uint8_t i = 0; i < 3; i++)
+						uart_buf[i] = pos_dbl_buf[1][0][i];
+					for(uint8_t i = 0; i < 3; i++)
+						uart_buf[i+3] = pos_dbl_buf[1][NUM_POS - 1][i];
+					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
+
+					HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
+					_buf_fresh = 0;
+					_con_empty_fresh = 1;
+					tick_cur = 0;
+					tick_fin = tick_fin_buf;
+				}
+			}
 			break;
 		}
 		case FREEFALL:
@@ -495,7 +453,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	}
 }
 void uart_rx(void) {
-	HAL_UART_Receive_IT(&huart3, uart_buf_in, UART_BUF_SIZE * sizeof(uart_buf_in[0]));
+//	HAL_UART_Receive_IT(&huart3, uart_buf_in, UART_BUF_SIZE * sizeof(uart_buf_in[0]));
 }
+//void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+//	if(hadc->Instance == ADC1) {
+//		adc_buf[adc_buf_idx & (NUM_ADC_BUF - 1)][adc_ch++] = HAL_ADC_GetValue(hadc);
+//		if(adc_ch == NUM_ADC_CH) {
+//			adc_ch = 0;
+//			adc_buf_idx++;
+//		}
+//
+//		adc_rx();
+//	}
+//}
+//void adc_rx(void) {
+//	HAL_ADC_Start_IT(&hadc1);
+//}
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -9,6 +9,8 @@
 #define CONSTS_H_
 
 #define EPS 1 // UNFLOAT 1E-3
+#define FEPS 1E-3
+#define _TTW 24
 #define _TW 16
 #define _W 8
 #define _HW 4

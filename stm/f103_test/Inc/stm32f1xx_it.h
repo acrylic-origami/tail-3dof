@@ -38,6 +38,7 @@
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
+#define NUM_HW_D_COEF 4 // ENSURE: power of 2
 
 /* USER CODE END EC */
 
@@ -57,6 +58,8 @@ void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
 void DMA1_Channel1_IRQHandler(void);
+void DMA1_Channel2_IRQHandler(void);
+void ADC1_2_IRQHandler(void);
 void TIM2_IRQHandler(void);
 void I2C1_EV_IRQHandler(void);
 void I2C1_ER_IRQHandler(void);
@@ -65,6 +68,7 @@ void USART3_IRQHandler(void);
 void EXTI15_10_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 void uart_rx(void);
+//void adc_rx(void);
 /* USER CODE END EFP */
 
 #ifdef __cplusplus

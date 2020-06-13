@@ -65,11 +65,11 @@ typedef struct joint_phys_s {
 // Hitec D645
 #define T0_HS 4096 // UNFLOAT 16.0
 #define SMAX_HS 1577 // UNFLOAT 6.16
-#define I_HS 2048 // UNFLOAT 80
+#define I_HS 20480 // UNFLOAT 80
 
-#define CCR_PER_RAD_HS 220
-#define CCR_MID_HS 600
-#define RNG_HS 576
+#define CCR_PER_RAD_HS 252
+#define CCR_MID_HS 562
+#define RNG_HS 628
 #define SGN_HS -1
 
 #define POT_MID_HS 548
@@ -78,54 +78,24 @@ typedef struct joint_phys_s {
 // DSServo 3218MG
 #define T0_DS 5120 // UNFLOAT 20.0
 #define SMAX_DS 1920 // UNFLOAT 7.5
-#define I_DS 768 // UNFLOAT 30
-#define CCR_PER_RAD_DS 252
-#define CCR_MID_DS 588
-#define RNG_DS 864
+#define I_DS 7680 // UNFLOAT 30
+#define CCR_PER_RAD_DS 237
+#define CCR_MID_DS 560
+#define RNG_DS 808
 #define SGN_DS 1
 
 #define POT_LOW_DS 0
 #define POT_HIGH_DS 1024
 
 // Hobbywing
-#define T0_HW 36310 // UNFLOAT 142 // kg-cm
-#define SMAX_HW 350 // UNFLOAT 1.37 // rad/s
-#define I_HW 2560 // UNFLOAT 50 // kg-cm
-
-// expressed in units of T0's per radian
-// regions are right-hand bounds of angle
-#define HW_D_N_0 3
-#define HW_D_D_0 19
-#define HW_P_N_0 8
-#define HW_P_D_0 13
-#define HW_I_N_0 8
-#define HW_I_D_0 35
-#define HW_P_REGION_0 (-TICKS_PER_RAD_HW * 4 / 7) // -(pi - 2) / 2 radians
-
-#define HW_D_N_1 3
-#define HW_D_D_1 19
-#define HW_P_N_1 2
-#define HW_P_D_1 29
-#define HW_I_N_1 4
-#define HW_I_D_1 60
-#define HW_P_REGION_1 (TICKS_PER_RAD_HW * 4 / 7) // +(pi - 2) / 2 radians
-
-#define HW_D_N_2 3
-#define HW_D_D_2 19
-#define HW_P_N_2 7
-#define HW_P_D_2 13
-#define HW_I_N_2 7
-#define HW_I_D_2 32
-
-// ccr/rad/s _unloaded_
-#define CCR_PER_RAD_S_HW 4 // UNFLOAT 0.01363
-#define RNG_HW (SMAX_HW * CCR_PER_RAD_S_HW * GEAR_RATIO_HW >> _W)
-#define S_TRANSITION_HW 100 // units of rad-s-256
-#define TICKS_PER_RAD_HW 33
-#define GEAR_RATIO_HW 51
-#define DEADBAND_HW 14
-#define CCR_MID_HW 562
+#define T0_HW 36310 // UNFLOAT 20.0
+#define SMAX_HW 350 // UNFLOAT 7.5
+#define I_HW 25600 // UNFLOAT 30
+#define CCR_PER_RAD_HW 127
+#define CCR_MID_HW 627
+#define RNG_HW 400
 #define SGN_HW 1
+
 //temp
 #define MAX_CCR_HW 30
 #define P_HW_N 1

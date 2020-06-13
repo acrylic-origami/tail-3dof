@@ -36,6 +36,9 @@
         * Output
         * EVENT_OUT
         * EXTI
+     PA4   ------> SharedAnalog_PA4
+     PB0   ------> SharedAnalog_PB0
+     PB1   ------> SharedAnalog_PB1
 */
 void MX_GPIO_Init(void)
 {
@@ -52,7 +55,7 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LD_GPIO_Port, LD_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, SERVO1_NSEL_Pin|SERVO2_NSEL_Pin|SERVO1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3|SERVO1_NSEL_Pin|SERVO2_NSEL_Pin|SERVO1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SERVO2_GPIO_Port, SERVO2_Pin, GPIO_PIN_RESET);
@@ -64,12 +67,22 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PAPin PAPin PAPin */
-  GPIO_InitStruct.Pin = SERVO1_NSEL_Pin|SERVO2_NSEL_Pin|SERVO1_Pin;
+  /*Configure GPIO pins : PA3 PAPin PAPin PAPin */
+  GPIO_InitStruct.Pin = SERVO1_NSEL_Pin|SERVO2_NSEL_Pin|SERVO1_Pin; // GPIO_PIN_3|
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PtPin */
+  GPIO_InitStruct.Pin = Xin_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  HAL_GPIO_Init(Xin_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PBPin PBPin */
+  GPIO_InitStruct.Pin = Zin_Pin|Yin_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PAPin PAPin */
   GPIO_InitStruct.Pin = LIMSW1_Pin|LIMSW2_Pin;
