@@ -15,4 +15,6 @@
 #define _W 8
 #define _HW 4
 
+#define INV_PI 82
+
 #endif /* CONSTS_H_ */

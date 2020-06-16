@@ -31,15 +31,16 @@ uint8_t inv_jacob(int32_t *A, int32_t *q, int32_t *tb, float *qb) {
 	// qb in natural units
 	int32_t c[3], s[3], p[3];
 	for(uint8_t i = 0; i < 3; i++) {
-		c[i] = icos(q[i]) << 1;
-		s[i] = isin(q[i]) << 1;
+		c[i] = (int16_t)icos(q[i] * INV_PI >> (_W + 1)) << 1;
+		s[i] = (int16_t)isin(q[i] * INV_PI >> (_W + 1)) << 1;
 	}
 
 	fwd_kin(A, q, p);
+	int32_t vp[3] = { 0, -s[1] * (A[2] + (A[3] * c[2] >> _W)) >> _W, (-c[1] * A[3] >> _W) * s[2] >> _W };
 	real J_[9] = { // note column-major order
 		0,         (-p[2]),            (p[1])           ,
-		(c[1] * ((A[3] * c[2] >> _W) + A[2]) >> _W),   ((-c[0] * s[1] >> _W) * (A[2] + (A[3] * c[2] >> _W))) >> _W,  ((-s[0] * s[1] >> _W) * (A[2] + (A[3] * c[2] >> _W))) >> _W ,
-		((-A[3] * s[1] >> _W) * s[2]) >> _W,    (((-c[0] * c[1] >> _W) * s[2] >> _W) * A[3] >> _W) - ((A[3] * s[0] >> _W) * c[2] >> _W),  (((-s[0] * c[1] >> _W) * s[2] >> _W) * A[3] >> _W) + ((A[3] * c[0] >> _W) * c[2] >> _W)
+		(c[1] * ((A[3] * c[2] >> _W) + A[2]) >> _W),   c[0] * vp[1] >> _W,  s[0] * vp[1] >> _W ,
+		((-A[3] * s[1] >> _W) * s[2]) >> _W,    (c[0] * vp[2] >> _W) - ((A[3] * s[0] >> _W) * c[2] >> _W),  (s[0] * vp[2] >> _W) + ((A[3] * c[0] >> _W) * c[2] >> _W)
 	};
 
 	for(uint8_t i = 0; i < 3; i++)
@@ -61,8 +62,8 @@ uint8_t inv_jacob(int32_t *A, int32_t *q, int32_t *tb, float *qb) {
 void fwd_kin(int32_t *A, int32_t *q, int32_t *r) {
     int32_t c[3], s[3];
 	for(uint8_t i = 0; i < 3; i++) {
-		c[i] = icos(q[i]) << 1;
-		s[i] = isin(q[i]) << 1;
+		c[i] = (int16_t)icos(q[i] * INV_PI >> (_W + 1)) << 1;
+		s[i] = (int16_t)isin(q[i] * INV_PI >> (_W + 1)) << 1;
 	}
 	int32_t v = A[1] + (c[1] * (A[2] + (A[3] * c[2] >> _W)) >> _W);
 

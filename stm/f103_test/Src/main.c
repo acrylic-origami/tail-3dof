@@ -99,6 +99,9 @@ int32_t vf_prev[3] = { 0 }; // previous final velocity
 int32_t t_prev[3] = { 0 }; // previous target angles (after inv kin)
 const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
 
+// bitmaps
+extern const uint8_t bump[NBUMP][NBUMP];
+
 // TEMP
 #define NUM_CART_POS 2
 int32_t Ts_[NUM_CART_POS][6] = {
@@ -167,20 +170,19 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
+//  while(HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin)); // wait for bottom limit switch trigger
+
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start(&htim3);
   HAL_TIM_Base_Start(&htim4);
 
-//  AS1130_Init();
+  AS1130_Init();
 
   htim2.Instance->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
   htim3.Instance->CCER |= TIM_CCER_CC2E;
 
-  // TODO startup routine by driving j0 to limit switch
   // TODO softer startup routine by reading from servo pot ADC and slow-driving them to center
   // TEMP
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-
   HAL_GPIO_WritePin(SERVO1_GPIO_Port, SERVO1_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(SERVO2_GPIO_Port, SERVO2_Pin, GPIO_PIN_SET);
 
@@ -198,6 +200,14 @@ int main(void)
 //	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, CCR_MID_DS + RNGs[2] - i * 4);
 //  }
   uint16_t R0 = A[1] + A[2] + A[3];
+//  {
+//	  int32_t t_[3] = { 0, 201, 0 };
+//	  int32_t td_[3] = { -32, 0, 32 };
+//	  volatile float tp_[3];
+//	  volatile uint8_t e = inv_jacob(A, t_, td_, tp_);
+//	  e++;
+//	  while(1);
+//  }
 
   mcp1130_txrx();
   uart_rx();
@@ -207,34 +217,53 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  for(uint8_t iter = 0; ; iter++)
+  for(uint32_t iter = 0; ; iter++)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-	  if(0) {
+	  while(1) {
 		  for(uint8_t i = 0; i < 132; i++) {
 			  if(hi2c1.State == HAL_I2C_STATE_READY) {
-		//	  		  px[(i >> 3) + 1] |= 1 << (i & 7);
-		//	  		  for(uint8_t j = 1; j < PX_SIZE; j++) {
-		//	  			  px[j] = 1 << (i & 7);
-		//	  		  }
-		//	  		  px[2] &= 0x1F; // preserve PWM frame
+				  //                        px[(i >> 3) + 1] |= 1 << (i & 7);
+				  //                        for(uint8_t j = 1; j < PX_SIZE; j++) {
+				  //                                px[j] = 1 << (i & 7);
+				  //                        }
+				  //                        px[2] &= 0x1F; // preserve PWM frame
 				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
-				  if(iter % 2) {
-					  px[0] = 0x18 + i;
-					  px[1] = 0x00;
-					  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
-				  }
-				  else {
-					  px[0] = 0x18 + ((i + 1) % 132);
-					  px[1] = 0x80;
-					  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
-				  }
+
+				  px[0] = 0x18 + i;
+				  px[1] = 0x00;
+				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
+
+				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
+				  px[0] = 0x18 + ((i + 1) % 132);
+				  px[1] = 0x80;
+				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
 			  }
-			  HAL_Delay(1);
+			  px[0]++;
 		  }
+	  }
+
+
+	  if(0) {
+		  uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
+		  tick = min(NUM_POS - 1, tick);
+		  uint16_t loc[2] = {
+			0, // (pos[tick][0] * RNGs[0] / PER_RADS[0]) * INV_PI >> _W,
+			0, // (pos[tick][1] * RNGs[1] / PER_RADS[1]) * INV_PI >> _W
+		  };
+		  uint16_t scale[2] = {
+			256, // (pos[tick][0] - pos[max(0, tick - 1)][0]) * 6 / NBUMP,
+			256, // (pos[tick][1] - pos[max(0, tick - 1)][1]) * 6 / NBUMP
+		  };
+		  uint8_t square[] = {
+			0x80, 0x80, 0x80,
+			0x80, 0x80, 0x80,
+			0x80, 0x80, 0x80,
+		  };
+		  AS1130_blit(square, 3, 3, loc, scale);
+		  loc[0]++;
 	  }
 
 //	  for(uint8_t i = 0; i < 40; i++) {
@@ -254,7 +283,7 @@ int main(void)
 
 		  if(!_con_empty_fresh && (!_buf_fresh || tick_cur <= tick_fin)) {
 			  int32_t max_tf = 0;
-			  int32_t t[3], v[3], tf[3], tbnd[2], tp[3];
+			  int32_t xyz[3], xyzd[3], t[3], v[3], tf[3], tbnd[2], tp[3];
 			  float tp_[3];
 			  uint8_t _converged = 0, _hand_ctrl_moved = 0;
 
@@ -298,8 +327,8 @@ int main(void)
 				  }
 
 				  // perform derivative
-				  if(0) {
-					  const uint16_t HALF_ADC_BITS = (NUM_ADC_BITS >> 1);
+				  if(1) {
+					  const uint16_t HALF_ADC_BITS = 9;
 					  for(uint16_t i = 0; i < NUM_HW_D_COEF; i++) {
 						  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++)
 							  hand_ctrl_d[k] +=
@@ -307,32 +336,49 @@ int main(void)
 											* R0 / (stride * HAND_CTRL_BUF_DS) * ADC_FREQ / NUM_HAND_CTRL_AX
 											/ ((HAND_CTRL_RNGS[k].rng[1] - HAND_CTRL_RNGS[k].rng[0] >> 1) >> HALF_ADC_BITS)
 											* HAND_CTRL_RNGS[k].sgn
-											>> (HALF_ADC_BITS + _W); // convert to 256-m/s
+											>> _W; // convert to 256-m/s
 					  }
 				  }
 
 				  // average previously subsampled values
+				  memset(&hand_ctrl_norm[1][0], 0, NUM_HAND_CTRL_AX * sizeof(hand_ctrl_norm[1][0]));
 				  for(uint16_t i = 0; i < NUM_HW_D_COEF; i++) {
 					  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++)
 						  hand_ctrl_norm[1][k] +=
-								  ((hand_ctrl_d_buf[i][k] - ((HAND_CTRL_RNGS[k].rng[1] + HAND_CTRL_RNGS[k].rng[0]) >> 1)) * R0)
+								  ((hand_ctrl_d_buf[i][k] - ((HAND_CTRL_RNGS[k].rng[1] + HAND_CTRL_RNGS[k].rng[0]) >> 1)) << _W)
 									/ (HAND_CTRL_RNGS[k].rng[1] - HAND_CTRL_RNGS[k].rng[0] >> 1)
 									* HAND_CTRL_RNGS[k].sgn;
 				  }
 				  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++) {
-					  hand_ctrl_norm[1][k] /= NUM_HW_D_COEF; // convert to 256-m centered around 0
+					  hand_ctrl_norm[1][k] /= NUM_HW_D_COEF; // convert to 256-norm (+/-1) centered around 0
 				  }
 
 				  for(uint8_t i = 0; i < NUM_HAND_CTRL_AX; i++) {
 					  if(abs(hand_ctrl_norm[0][i] - hand_ctrl_norm[1][i]) > HAND_CTRL_DEADBAND) {
 						  memcpy(&hand_ctrl_norm[0][0], &hand_ctrl_norm[1][0], NUM_HAND_CTRL_AX * sizeof(hand_ctrl_norm[1][0]));
 						  _hand_ctrl_moved = 1;
+						  // itrig functions domain 0->256 => 0->2pi, range -128->127 => -1->1
+						  // controller 0 1 2 -> yaw radius pitch
+						  int32_t c0 = icos(hand_ctrl_norm[0][2] >> 2), c1 = icos(hand_ctrl_norm[0][0] >> 2),
+								  s0 = isin(hand_ctrl_norm[0][2] >> 2), s1 = isin(hand_ctrl_norm[0][0] >> 2);
+						  int32_t R = (hand_ctrl_norm[0][1] * (HAND_R1 - HAND_R0) >> _W) + HAND_R0;
+						  xyz[0] = (c0 * s1 >> (_W - 2)) * R >> _W;
+						  xyz[1] = (c0 * c1 >> (_W - 2)) * R >> _W;
+						  xyz[2] = (s0 << 1) * R >> _W;
+
+						  int32_t *td = hand_ctrl_d;
+						  xyzd[0] = (((-s0 * s1 * td[2] + c0 * c1 * td[0]) >> (_TW - 2)) * R + xyz[0] * td[1]) >> _W; // dx/dt
+						  xyzd[1] = (-((s0 * c1 * td[2] + c0 * s1 * td[0]) >> (_TW - 2)) * R + xyz[1] * td[1]) >> _W; // dy/dt
+						  xyzd[2] = ((c0 * td[2] >> (_W - 1)) * R + xyz[2] * td[1]) >> _W; // dz/dt
+						  for(uint8_t j = 0; j < 3; j++)
+							  hand_ctrl_dpack[j] = xyzd[j];
+
 						  break;
 					  }
 				  }
 
 				  for(uint8_t i = 0; i < NUM_HAND_CTRL_AX; i++) {
-					  hand_ctrl_dpack[i] = t[i]; //  * PER_RADS[i] >> _W;
+//					  hand_ctrl_dpack[i] = xyz[i]; //  * PER_RADS[i] >> _W;
 				  }
 	//			  for(uint8_t i = 0; i < NUM_HW_D_COEF; i++) {
 	//				  hand_ctrl_dpack[i + NUM_HAND_CTRL_AX] = hand_ctrl_d_buf[i][1];
@@ -352,7 +398,7 @@ int main(void)
 	//		  hand_ctrl_norm[2] = 80;
 	//		  t_prev[0] = 0;
 
-			  if(_hand_ctrl_moved && !inv_kin(A, &hand_ctrl_norm[0][0], t, t_prev[0])) { // (!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
+			  if(_hand_ctrl_moved && !inv_kin(A, xyz, t, t_prev[0])) { // (!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
 				  uint8_t _unreachable = 0;
 				  for(uint8_t i = 0; i < 3; i++) {
 					  if(abs(t[i] * PER_RADS[i] >> _W) > RNGs[i]) {
@@ -360,18 +406,19 @@ int main(void)
 						  break;
 					  }
 				  }
-				  if(!_unreachable && !inv_jacob(A, t, hand_ctrl_d, tp_)) {
+				  if(!_unreachable && !inv_jacob(A, t, xyzd, tp_)) {
 					  _converged = 1;
 					  for(uint8_t i = 0; i < 3; i++) {
 						  tp[i] = (int32_t)(tp_[i] * (1 << _W));
+//						  hand_ctrl_dpack[i] = tp[i];
 					  }
 
 					  for(uint8_t i = 0; i < 3 && _converged; i++) {
 						  uint8_t j = 0;
-						  for(int32_t v_ = tp[i]; j < TRAJ_ITER_LIM; v_ /= 2, j++) {
-							  if(!traj_t(t_prev[i], t[i], vf_prev[i], v_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
+						  for(int32_t va_ = t_prev[i], vb_ = tp[i]; j < TRAJ_ITER_LIM; va_ /= 2, vb_ /= 2, j++) {
+							  if(!traj_t(t_prev[i], t[i], va_, vb_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
 								  tf[i] = (1 << _TW) / tbnd[1];
-								  v[i] = v_;
+								  v[i] = vb_;
 		  //						  if(tf_ > 2 * MAX_TF)
 		  //							  _converged = 0;
 								  hand_ctrl_dpack[3] = 0;
@@ -397,7 +444,7 @@ int main(void)
 				  hand_ctrl_dpack[3] = 1;
 			  }
 			  if(_hand_ctrl_moved) {
-//				  HAL_UART_Transmit_IT(&huart3, hand_ctrl_dpack, 8);
+				  HAL_UART_Transmit_IT(&huart3, hand_ctrl_dpack, 8);
 			  }
 
 			  /////////////
@@ -405,7 +452,7 @@ int main(void)
 			  /////////////
 
 			  if(_converged) {
-				  tick_fin_buf = max_tf * 3 * TIM2_FREQ >> _W; // WATCH: TIM3_FREQ is base units
+				  tick_fin_buf = (max_tf * TIM2_FREQ / 8) >> _W; // WATCH: TIM3_FREQ is base units
 				  tick_fin_buf = max(1, tick_fin_buf);
 				  memcpy(uart_buf, t, 3 * sizeof(t[0]));
 				  uart_buf[3] = (hand_ctrl_norm[0][1] << 16) | (hand_ctrl_norm[0][0] & 0xFFFF);

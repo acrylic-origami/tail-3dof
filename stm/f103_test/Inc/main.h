@@ -68,10 +68,13 @@ void mcp1130_txrx(void);
 #define TIM2_J0_PWM_GPIO_Port GPIOA
 #define Xin_Pin GPIO_PIN_3
 #define Xin_GPIO_Port GPIOA
-#define Zin_Pin GPIO_PIN_0
-#define Zin_GPIO_Port GPIOB
-#define Yin_Pin GPIO_PIN_1
+#define Yin_Pin GPIO_PIN_0
 #define Yin_GPIO_Port GPIOB
+#define Zin_Pin GPIO_PIN_1
+#define Zin_GPIO_Port GPIOB
+#define LIMSW2_Pin GPIO_PIN_12
+#define LIMSW2_GPIO_Port GPIOB
+#define LIMSW2_EXTI_IRQn EXTI15_10_IRQn
 #define SERVO1_NSEL_Pin GPIO_PIN_8
 #define SERVO1_NSEL_GPIO_Port GPIOA
 #define SERVO2_NSEL_Pin GPIO_PIN_9
@@ -79,9 +82,6 @@ void mcp1130_txrx(void);
 #define LIMSW1_Pin GPIO_PIN_11
 #define LIMSW1_GPIO_Port GPIOA
 #define LIMSW1_EXTI_IRQn EXTI15_10_IRQn
-#define LIMSW2_Pin GPIO_PIN_12
-#define LIMSW2_GPIO_Port GPIOA
-#define LIMSW2_EXTI_IRQn EXTI15_10_IRQn
 #define SERVO1_Pin GPIO_PIN_15
 #define SERVO1_GPIO_Port GPIOA
 #define SERVO2_Pin GPIO_PIN_3
@@ -91,6 +91,9 @@ void mcp1130_txrx(void);
 #define NUM_HAND_CTRL_AX 3
 #define HAND_CTRL_BUF_DS 2 // downsampling factor (simple skipping)
 #define HAND_CTRL_DEADBAND 3
+// (11.704699910719626, [-4, 0, -11]) (18.16590212458495, [-16, -5, -7])
+#define HAND_R0 117 // UNFLOAT 0.4572
+#define HAND_R1 182 // UNFLOAT 0.7096
 
 #define NUM_POS 128
 #define NUM_POS_MSK 0x3F
@@ -98,9 +101,12 @@ void mcp1130_txrx(void);
 
 #define UART_BUF_SIZE 7
 
-#define TRAJ_ITER_LIM 8
+#define TRAJ_ITER_LIM 3
 
 #define TIM2_FREQ 50
+
+#define LOWER_LIM_BREAK_TIMEOUT (TIM2_FREQ)
+#define UPPER_LIM_BREAK_INIT (TIM2_FREQ / 4)
 
 #define MCP3002_CONFIG (0b11010000 << 8)
 #define MCP3002_ODD_SIGN_Pos 13

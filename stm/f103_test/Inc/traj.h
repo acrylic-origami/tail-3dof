@@ -95,6 +95,7 @@ typedef struct joint_phys_s {
 #define CCR_MID_HW 627
 #define RNG_HW 400
 #define SGN_HW 1
+#define HW_FREEFALL_CCR 100 // << 900us
 
 //temp
 #define MAX_CCR_HW 30

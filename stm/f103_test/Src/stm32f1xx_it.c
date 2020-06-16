@@ -394,18 +394,41 @@ void EXTI15_10_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 int16_t uart_buf[6];
+const uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
+volatile int16_t lower_lim_break = -1, upper_lim_break = -1;
+volatile uint16_t lower_lim_break_j0_ccr = 0, upper_lim_break_j0_ccr = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if(htim->Instance == TIM2) {
+		if(HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin))
+			lower_lim_break = -1; // re-enable unconditionally if the bottom limsw is reset
+
 		uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
-		uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
-		tick = tick >= NUM_POS ? NUM_POS - 1 : tick;
+		tick = min(NUM_POS - 1, tick);
 		switch(motion_state) {
 		case RUN: {
 			if(tick_cur <= tick_fin) {
 				for(uint8_t i = 0; i < 3; i++) {
 					int16_t pos_ = ((pos[tick][i] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
 					pos_ = max(-RNGs[i], min(RNGs[i], pos_));
-					__HAL_TIM_SET_COMPARE(&htim2, chs[i], MIDs[i] + pos_);
+					uint16_t ccr = MIDs[i] + pos_;
+
+					if(i != 0 || (upper_lim_break < 0 && (lower_lim_break < 0 || (lower_lim_break > 0 && ccr > lower_lim_break_j0_ccr)))) {
+						__HAL_TIM_SET_COMPARE(&htim2, chs[i], ccr);
+					}
+					else if(i == 0) {
+						// force freefall
+						__HAL_TIM_SET_COMPARE(&htim2, chs[i], HW_FREEFALL_CCR);
+						if(upper_lim_break >= 0 && HAL_GPIO_ReadPin(LIMSW2_GPIO_Port, LIMSW2_Pin) && ccr < upper_lim_break_j0_ccr)
+							upper_lim_break--;
+
+						if(ccr > lower_lim_break_j0_ccr && upper_lim_break == -1 && lower_lim_break > 0) { // if lower_lim_break == 0, timed out: lock until reset
+							lower_lim_break--;
+						}
+						if(lower_lim_break == 0) {
+							lower_lim_break += 0 / 1;
+						}
+
+					}
 				}
 				tick_cur++;
 
@@ -436,7 +459,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 						uart_buf[i] = pos_dbl_buf[1][0][i];
 					for(uint8_t i = 0; i < 3; i++)
 						uart_buf[i+3] = pos_dbl_buf[1][NUM_POS - 1][i];
-					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
+					//					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
 
 					HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
 					_buf_fresh = 0;
@@ -444,12 +467,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 					tick_cur = 0;
 					tick_fin = tick_fin_buf;
 				}
+				if(upper_lim_break >= 0 || lower_lim_break >= 0) {
+					__HAL_TIM_SET_COMPARE(&htim2, chs[0], HW_FREEFALL_CCR);
+				}
 			}
 			break;
 		}
 		case FREEFALL:
 			break;
 		}
+	}
+	else {
+
+	}
+}
+void HAL_GPIO_EXTI_Callback(uint16_t pin) {
+	switch(pin) {
+	case LIMSW2_Pin:
+		upper_lim_break = UPPER_LIM_BREAK_INIT; // freefall for some time
+		upper_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		break;
+	case LIMSW1_Pin:
+		lower_lim_break = LOWER_LIM_BREAK_TIMEOUT;
+		lower_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		break;
 	}
 }
 void uart_rx(void) {
