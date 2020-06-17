@@ -36,6 +36,7 @@
 #include "consts.h"
 #include "math_util.h"
 #include "as1130.h"
+#include "imath.h"
 #include <math.h>
 #include <string.h>
 
@@ -222,8 +223,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  while(1) {
-		  for(uint8_t i = 0; i < 132; i++) {
+
+	  while(0) {
+		  for(uint8_t i = 124; i < 132; i++) {
 			  if(hi2c1.State == HAL_I2C_STATE_READY) {
 				  //                        px[(i >> 3) + 1] |= 1 << (i & 7);
 				  //                        for(uint8_t j = 1; j < PX_SIZE; j++) {
@@ -233,12 +235,12 @@ int main(void)
 				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
 
 				  px[0] = 0x18 + i;
-				  px[1] = 0x00;
+				  px[1] = 0x80;
 				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
 
 				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
 				  px[0] = 0x18 + ((i + 1) % 132);
-				  px[1] = 0x80;
+				  px[1] = 0x0;
 				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
 			  }
 			  px[0]++;
@@ -246,24 +248,21 @@ int main(void)
 	  }
 
 
-	  if(0) {
+	  {
 		  uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
 		  tick = min(NUM_POS - 1, tick);
 		  uint16_t loc[2] = {
-			0, // (pos[tick][0] * RNGs[0] / PER_RADS[0]) * INV_PI >> _W,
-			0, // (pos[tick][1] * RNGs[1] / PER_RADS[1]) * INV_PI >> _W
+			(pos[tick][0] * PER_RADS[0] / RNGs[0]) + 127,
+			(pos[tick][1] * PER_RADS[1] / RNGs[1]) + 127
 		  };
+		  uint8_t *square = bump; // { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, };
+		  uint16_t dims[2] = { NBUMP, NBUMP }; // { 3, 3 };
 		  uint16_t scale[2] = {
-			256, // (pos[tick][0] - pos[max(0, tick - 1)][0]) * 6 / NBUMP,
-			256, // (pos[tick][1] - pos[max(0, tick - 1)][1]) * 6 / NBUMP
+			32, // + abs(pos[tick][0] - pos[max(0, tick - 1)][0]) * 512 * 6 / NBUMP,
+			32, // + abs(pos[tick][1] - pos[max(0, tick - 1)][1]) * 512 * 6 / NBUMP
 		  };
-		  uint8_t square[] = {
-			0x80, 0x80, 0x80,
-			0x80, 0x80, 0x80,
-			0x80, 0x80, 0x80,
-		  };
-		  AS1130_blit(square, 3, 3, loc, scale);
-		  loc[0]++;
+		  AS1130_blit(square, dims, loc, scale);
+		  HAL_Delay(20);
 	  }
 
 //	  for(uint8_t i = 0; i < 40; i++) {
@@ -327,7 +326,7 @@ int main(void)
 				  }
 
 				  // perform derivative
-				  if(1) {
+				  if(0) {
 					  const uint16_t HALF_ADC_BITS = 9;
 					  for(uint16_t i = 0; i < NUM_HW_D_COEF; i++) {
 						  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++)

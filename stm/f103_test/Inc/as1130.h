@@ -14,8 +14,12 @@
 #define AS1130_ADDR            0b01101110
 #define NUM_PXS 132
 void AS1130_Init(void);
-uint8_t AS1130_blit(uint8_t *A, uint16_t ncols, uint16_t nrows, uint16_t *loc, uint16_t *scale);
+uint8_t AS1130_blit(uint8_t *A, uint16_t *Adims, uint16_t *loc, uint16_t *scale);
 uint8_t AS1130_xy2idx(uint8_t x, uint8_t y);
+
+#define ARRAY_ROWS 12
+#define ARRAY_COLS 6
+#define ARRAY_ROW_FOLDING 2
 
 // hardcoded bitmaps
 #define NBUMP 32
