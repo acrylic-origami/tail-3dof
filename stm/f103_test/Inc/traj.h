@@ -104,5 +104,6 @@ typedef struct joint_phys_s {
 
 int32_t sgn(int32_t x);
 uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joint_phys_t *phys);
+void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, int32_t *tr);
 
 #endif /* TRAJ_H_ */

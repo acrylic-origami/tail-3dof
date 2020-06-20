@@ -74,8 +74,8 @@ const hand_ctrl_cfg_t HAND_CTRL_RNGS[NUM_HAND_CTRL_AX] = {
 // map the ADC via channel order to XYZ
 
 //volatile uint8_t adc_ch = 0, adc_buf_idx = 0;
-int16_t pos_dbl_buf[2][NUM_POS][3] = { 0 };
-volatile int16_t pos[NUM_POS][3] = { 0 };
+int16_t pos_dbl_buf[2][NUM_POS_ELE] = { 0 };
+volatile int16_t pos[NUM_POS_ELE] = { 0 };
 volatile uint8_t _buf_fresh = 0, _con_empty_fresh = 0;
 uint16_t tick_fin_buf = 0, tick_fin = 0, tick_cur = 1; // start with consumer hungry
 int32_t A[4] = { 0, A1, A2, A3 };
@@ -189,6 +189,7 @@ int main(void)
 
   HAL_GPIO_WritePin(SERVO1_NSEL_GPIO_Port, SERVO1_NSEL_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_RESET);
+//  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, CCR_MID_DS);
 //  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (CCR_MID_DS + (RNG_DS + 300) / 2) - ((RNG_DS + 300) * abs(32 - i)) / 32);
 
 //  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW);
@@ -252,17 +253,16 @@ int main(void)
 		  uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
 		  tick = min(NUM_POS - 1, tick);
 		  uint16_t loc[2] = {
-			(pos[tick][0] * PER_RADS[0] / RNGs[0]) + 127,
-			(pos[tick][1] * PER_RADS[1] / RNGs[1]) + 127
+			(pos[tick * POS_STRIDE + 1 * NUM_POS_DERIV] * PER_RADS[1] / RNGs[1] / 2) + 127,
+			-(pos[tick * POS_STRIDE + 0 * NUM_POS_DERIV] * PER_RADS[0] / RNGs[0] / 2) + 127,
 		  };
 		  uint8_t *square = bump; // { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, };
 		  uint16_t dims[2] = { NBUMP, NBUMP }; // { 3, 3 };
 		  uint16_t scale[2] = {
-			32, // + abs(pos[tick][0] - pos[max(0, tick - 1)][0]) * 512 * 6 / NBUMP,
-			32, // + abs(pos[tick][1] - pos[max(0, tick - 1)][1]) * 512 * 6 / NBUMP
+			32, // + abs(pos[tick * POS_STRIDE + 0 * NUM_POS_DERIV] - pos[max(0, tick - 1) * POS_STRIDE + 0 * NUM_POS_DERIV]) * 512 * 6 / NBUMP,
+			32, // + abs(pos[tick * POS_STRIDE + 1 * NUM_POS_DERIV] - pos[max(0, tick - 1) * POS_STRIDE + 1 * NUM_POS_DERIV]) * 512 * 6 / NBUMP
 		  };
 		  AS1130_blit(square, dims, loc, scale);
-		  HAL_Delay(20);
 	  }
 
 //	  for(uint8_t i = 0; i < 40; i++) {
@@ -451,22 +451,22 @@ int main(void)
 			  /////////////
 
 			  if(_converged) {
-				  tick_fin_buf = (max_tf * TIM2_FREQ / 8) >> _W; // WATCH: TIM3_FREQ is base units
+				  tick_fin_buf = (max_tf * TIM2_FREQ) >> _W; // WATCH: TIM3_FREQ is base units
 				  tick_fin_buf = max(1, tick_fin_buf);
-				  memcpy(uart_buf, t, 3 * sizeof(t[0]));
-				  uart_buf[3] = (hand_ctrl_norm[0][1] << 16) | (hand_ctrl_norm[0][0] & 0xFFFF);
-				  uart_buf[4] = (max_tf << 16) | (hand_ctrl_norm[0][2] & 0xFFFF);
+//				  memcpy(uart_buf, t, 3 * sizeof(t[0]));
+//				  uart_buf[3] = (hand_ctrl_norm[0][1] << 16) | (hand_ctrl_norm[0][0] & 0xFFFF);
+//				  uart_buf[4] = (max_tf << 16) | (hand_ctrl_norm[0][2] & 0xFFFF);
 	//			  memcpy(&uart_buf[3], hand_ctrl_norm, 3 * sizeof(hand_ctrl_norm[0]));
 	//			  HAL_UART_Transmit_IT(&huart3, uart_buf, 4 * 5); // sizeof(uart_buf[0]));
 
 				  for(uint8_t i = 0; i < NUM_POS; i++) {
 					  for(uint8_t j = 0; j < 3; j++) {
-						  pos_dbl_buf[0][i][j] = lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / (NUM_POS - 1)); // WATCH: NUM_POS and PER_RADS is natural units
+						  lerp(t_prev[j], t[j], vf_prev[j], v[j], max_tf, (i * max_tf) / (NUM_POS - 1), &pos_dbl_buf[0][i * POS_STRIDE + j * NUM_POS_DERIV]); // WATCH: NUM_POS and PER_RADS is natural units
 						  // interestingly, the integer arithmetic introduces rounding-like errors, not only floor-like errors (e.g. skips up to 2)
 					  }
 				  }
 		//		  for(uint8_t i = 0
-		//		    ; i < 32 && HAL_DMA_Start(&hdma_memtomem_dma1_channel1, &pos_dbl_buf[0], &pos_dbl_buf[1], NUM_POS * 3) != HAL_OK
+		//		    ; i < 32 && HAL_DMA_Start(&hdma_memtomem_dma1_channel1, &pos_dbl_buf[0][0], &pos_dbl_buf[1][0], NUM_POS_ELE) != HAL_OK
 		//		    ; i++) {}
 				  _buf_fresh = 0;
 				  if(!_con_empty_fresh) {
@@ -474,7 +474,7 @@ int main(void)
 					  // and it definitely took the existing buffer
 					  // so trash this conversion
 					  while(hdma_memtomem_dma1_channel2.Instance->CNDTR); // wait for DMA to finish transferring buffer
-					  memcpy(&pos_dbl_buf[1][0][0], &pos_dbl_buf[0][0][0], sizeof(pos_dbl_buf[0][0][0]) * NUM_POS * 3);
+					  memcpy(&pos_dbl_buf[1][0], &pos_dbl_buf[0][0], sizeof(pos_dbl_buf[0][0]) * NUM_POS_ELE);
 					  _buf_fresh = 1;
 				  }
 
@@ -488,7 +488,7 @@ int main(void)
 		  }
 		  if(_con_empty_fresh) {
 			  for(uint8_t i = 0; i < 3; i++) {
-				  t_prev[i] = pos_dbl_buf[1][NUM_POS - 1][i];
+				  t_prev[i] = pos_dbl_buf[1][(NUM_POS - 1) * POS_STRIDE + i * NUM_POS_DERIV];
 			  }
 			  _con_empty_fresh = 0;
 		  }

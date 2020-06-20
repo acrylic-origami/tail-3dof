@@ -54,11 +54,11 @@ typedef enum motion_state_t_e {
 /* USER CODE BEGIN PV */
 extern ADC_HandleTypeDef hadc1;
 
-extern int16_t pos_dbl_buf[2][NUM_POS][3];
+extern int16_t pos_dbl_buf[2][NUM_POS_ELE];
 extern const uint16_t RNGs[3];
 extern const uint16_t PER_RADS[3];
 extern const int8_t RHR_SGNS[3];
-extern volatile int16_t pos[NUM_POS][3];
+extern volatile int16_t pos[NUM_POS_ELE];
 extern uint8_t _buf_fresh, _con_empty_fresh;
 extern const uint16_t MIDs[3];
 extern uint16_t tick_fin, tick_fin_buf, tick_cur;
@@ -408,7 +408,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		case RUN: {
 			if(tick_cur <= tick_fin) {
 				for(uint8_t i = 0; i < 3; i++) {
-					int16_t pos_ = ((pos[tick][i] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
+					int16_t pos_ = ((pos[tick * POS_STRIDE + i * NUM_POS_DERIV] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
 					pos_ = max(-RNGs[i], min(RNGs[i], pos_));
 					uint16_t ccr = MIDs[i] + pos_;
 
@@ -433,7 +433,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 				tick_cur++;
 
 				if(spi_valid >= 2) {
-					uint16_t pos_ = pos[tick > 0 ? tick - 1 : 0][1];
+					uint16_t pos_ = pos[(tick > 0 ? tick - 1 : 0) * POS_STRIDE + 1 * NUM_POS_DERIV]; // TODO generalize over all axes
 					error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
 
 					//				{
@@ -454,11 +454,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 				}
 			}
 			else {
-				if(_buf_fresh && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel2, &pos_dbl_buf[1][0][0], pos, sizeof(pos[0][0]) * NUM_POS * 3) == HAL_OK) {
-					for(uint8_t i = 0; i < 3; i++)
-						uart_buf[i] = pos_dbl_buf[1][0][i];
-					for(uint8_t i = 0; i < 3; i++)
-						uart_buf[i+3] = pos_dbl_buf[1][NUM_POS - 1][i];
+				if(_buf_fresh && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel2, &pos_dbl_buf[1][0], pos, sizeof(pos[0]) * NUM_POS_ELE) == HAL_OK) {
+//					for(uint8_t i = 0; i < 3; i++)
+//						uart_buf[i] = pos_dbl_buf[1][i * NUM_POS_DERIV];
+//					for(uint8_t i = 0; i < 3; i++)
+//						uart_buf[i+3] = pos_dbl_buf[1][(NUM_POS - 1) * POS_STRIDE + i * NUM_POS_DERIV];
 					//					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
 
 					HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);

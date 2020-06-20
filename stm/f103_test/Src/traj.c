@@ -127,6 +127,9 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 static int32_t smoothstep(int32_t t) {
 	return 3 * (t * t >> _W) - 2 * ((t * t >> _W) * t >> _W);
 }
+static int32_t smoothstep_p(int32_t t) {
+	return 6 * t * (1 << _W - t) >> _W;
+}
 uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joint_phys_t *phys) {
 	int32_t vm = x1 - x0;
 	int32_t vtf[2] = { abs((v0 << _W)/ALPHA), abs((v1 << _W)/ALPHA) };
@@ -139,28 +142,67 @@ uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joi
 
 	return populate(lv, lt, bnd, phys, v0 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v0) || populate(rv, rt, bnd, phys, v1 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v1);
 }
-int32_t lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t) {
+void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, int32_t *tr) {
 	int32_t av_ = max(abs(av), (1 << _TW) / tf);
 	int32_t bv_ = max(abs(bv), (1 << _TW) / tf);
 
-	int32_t l = ((av * t >> _W) + a);
-	int32_t m = (b - a) * t / tf + a; // EXEMPT: * followed by /
-	int32_t r = ((bv * (t - tf) >> _W) + b);
+	int32_t l = ((av * t >> _W) + a), lp = av;
+	int32_t m = (b - a) * t / tf + a, mp = (b - a << _W) / tf; // EXEMPT: * followed by /
+	int32_t r = ((bv * (t - tf) >> _W) + b), rp = bv;
 	if(t < (ALPHA << _W) / av_ && t >= (tf - (ALPHA << _W) / bv_)) {
-		int32_t s0 = smoothstep(t * av_ / ALPHA); // EXEMPT: * followed by /
-		int32_t s1 = smoothstep((tf - t) * bv_ / ALPHA); // EXEMPT: * followed by /
-		int32_t s2 = (t << _W) / tf;
-		return (((l * ((1 << _W) - s0) + m * s0) >> _W) * ((1 << _W) - s2) >> _W) + (((r * ((1 << _W) - s1) + m * s1) >> _W) * s2 >> _W); // GROUPED: distributive */+
+		int32_t t0 = t * av_ / ALPHA, t1 = (tf - t) * bv_ / ALPHA;
+		int32_t s0 = smoothstep(t0), s1 = smoothstep(t1);
+		int32_t s0p = smoothstep_p(t0), s1p = smoothstep_p(t1);
+		int32_t s2 = (t << _W) / tf, s2p = (1 << _TW) / tf;
+		tr[0] =
+			(
+				(l * ((1 << _W) - s0) + m * s0 >> _W)
+				* ((1 << _W) - s2)
+				>> _W
+			)
+			+ (
+				(r * ((1 << _W) - s1) + m * s1 >> _W)
+				* s2
+				>> _W
+			);
+		tr[1] =
+			(
+				((m - l) * s0p + lp * ((1 << _W) - s0) + mp * s0 >> _W)
+				* ((1 << _W) - s2)
+				>> _W
+			)
+			- (
+				(l * ((1 << _W) - s0) + m * s0 >> _W)
+				* s2p
+				>> _W
+			)
+			+ (
+				((m - r) * s0p + rp * ((1 << _W) - s1) + mp * s1 >> _W)
+				* s2
+				>> _W
+			)
+			+ (
+				(r * ((1 << _W) - s0) + m * s1 >> _W)
+				* s2p
+				>> _W
+			);
 	}
 	else if(t < (ALPHA << _W) / av_) {
-		int32_t s = smoothstep(t * av_ / ALPHA); // EXEMPT: * followed by /
-		return l * ((1 << _W) - s) + m * s >> _W;
+		int32_t t_ = t * av_ / ALPHA;
+		int32_t s = smoothstep(t_); // EXEMPT: * followed by /
+		int32_t sp = smoothstep_p(t_);
+		tr[0] = l * ((1 << _W) - s) + m * s >> _W;
+		tr[1] = (m - l) * sp + lp * ((1 << _W) - s) + mp * s >> _W;
 	}
 	else if(t >= (ALPHA << _W) / av_ && t < (tf - (ALPHA << _W) / bv_)) {
-		return m;
+		tr[0] = m;
+		tr[1] = mp;
 	}
 	else {
-		int32_t s = smoothstep((tf - t) * bv_ / ALPHA); // EXEMPT: * followed by /
-		return r * ((1 << _W) - s) + m * s >> _W;
+		int32_t t_ = (tf - t) * bv_ / ALPHA;
+		int32_t s = smoothstep(t_); // EXEMPT: * followed by /
+		int32_t sp = smoothstep_p(t_);
+		tr[0] = r * ((1 << _W) - s) + m * s >> _W;
+		tr[1] = (m - r) * sp + rp * ((r << _W) - s) + mp * s >> _W;
 	}
 }

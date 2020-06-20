@@ -98,6 +98,10 @@ void mcp1130_txrx(void);
 #define NUM_POS 128
 #define NUM_POS_MSK 0x3F
 #define NUM_POS_Pos 6
+#define NUM_JOINTS 3
+#define NUM_POS_DERIV 2
+#define POS_STRIDE (NUM_JOINTS * NUM_POS_DERIV)
+#define NUM_POS_ELE (NUM_POS * POS_STRIDE)
 
 #define UART_BUF_SIZE 7
 
