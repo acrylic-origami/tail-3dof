@@ -19,6 +19,7 @@
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
 
+uint32_t cantor_pair(uint32_t a, uint32_t b);
 float cubic(float a, float b, float c, float d);
 uint32_t isqrt(uint32_t a_nInput);
 

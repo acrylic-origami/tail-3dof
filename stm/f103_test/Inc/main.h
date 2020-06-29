@@ -56,6 +56,7 @@ typedef enum global_state_e {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+uint16_t pos_idx(void);
 void mcp1130_txrx(void);
 /* USER CODE END EFP */
 
@@ -98,8 +99,8 @@ void mcp1130_txrx(void);
 #define HAND_CTRL_BUF_DS 2 // downsampling factor (simple skipping)
 #define HAND_CTRL_DEADBAND 3
 // (11.704699910719626, [-4, 0, -11]) (18.16590212458495, [-16, -5, -7])
-#define HAND_R0 117 // UNFLOAT 0.4572
-#define HAND_R1 182 // UNFLOAT 0.7096
+#define HAND_R0 135 // UNFLOAT 0.470
+#define HAND_R1 158 // UNFLOAT 0.578
 
 #define NUM_POS 128
 #define NUM_POS_MSK 0x3F
@@ -108,6 +109,9 @@ void mcp1130_txrx(void);
 #define NUM_POS_DERIV 2
 #define POS_STRIDE (NUM_JOINTS * NUM_POS_DERIV)
 #define NUM_POS_ELE (NUM_POS * POS_STRIDE)
+
+#define SPEEDUP_FACTOR_N 7
+#define SPEEDUP_FACTOR_D 4
 
 #define UART_BUF_SIZE 10
 

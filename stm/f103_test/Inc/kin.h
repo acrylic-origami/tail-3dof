@@ -16,6 +16,6 @@
 
 void fwd_kin(int32_t *A, int32_t *q, int32_t *r);
 uint8_t inv_jacob(int32_t *A, int32_t *q, int32_t *tb, float *qb);
-uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t, int32_t prev_t0);
+uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t);
 
 #endif /* KIN_H_ */

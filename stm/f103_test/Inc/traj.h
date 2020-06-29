@@ -13,44 +13,47 @@
 
 // servo parameters //
 // overshoot scaling
-#define ALPHA 512 // UNFLOAT 2.0
+#define ALPHA 1024 // UNFLOAT 4.0
 #define MAX_T_DEFAULT 0x7FFFFFFF
 
 // Newton's method limit
 #define TIM_ITER_LIM 16
 #define TIM_ITER_EPS 16384 // UNFLOAT 64
 
-// safety
-// n cycles time constant, defines threshold for PI thresholding, tied to filter coeff
-#define I_TC_N 5
-#define I_TC_D 1
-#define I_FILT_COEFF_N 4
-#define I_FILT_COEFF_D 5
-// scaled against 4A/1024
-#define I_MAX_N 512
-#define ERROR_TC 5
-// TODO need to tune this to the ADC settings
-// TODO for the moment: 20deg at 151deg range (spanning 1024)
-//#define ERROR_MAX_N 136
-#define ERROR_MAX_N 50
-#define ERROR_FILT_COEFF_N 4
-#define ERROR_FILT_COEFF_D 5
+//// safety
+//// n cycles time constant, defines threshold for PI thresholding, tied to filter coeff
+//#define I_TC_N 5
+//#define I_TC_D 1
+//#define I_FILT_COEFF_N 4
+//#define I_FILT_COEFF_D 5
+//// scaled against 4A/1024
+//#define I_MAX_N 512
 
-#define ERROR_SCALE_HS_N 9
-#define ERROR_SCALE_HS_D 20
+//// ERROR CONTROL //
+//#define ERROR_TC 5
+//// TODO need to tune this to the ADC settings
+//// TODO for the moment: 20deg at 151deg range (spanning 1024)
+////#define ERROR_MAX_N 136
+//#define ERROR_MAX_N 50
+//#define ERROR_FILT_COEFF_N 4
+//#define ERROR_FILT_COEFF_D 5
+//
+//#define ERROR_SCALE_HS_N 9
+//#define ERROR_SCALE_HS_D 20
 
-// freefall filter for reset
-// n cycles time constant
-#define FREEFALL_TC_N 36
-#define FREEFALL_TC_D 25
-#define FREEFALL_FILT_COEFF_N 1
-#define FREEFALL_FILT_COEFF_D 2
-// allow approx. 10 "degree-time-constants" of error (stricter than instantaneous)
-// TC * (thresh / rng * rng_ccr)
-// TODO: I don't think this filter will work without the setpoint:
-// could trip back into operation by coincidence while it's still moving
-// probably want a kind of difference component to make sure it's not moving much anymore
-#define FREEFALL_THRESH 28
+//// FREEFALL CTRL //
+//// freefall filter for reset
+//// n cycles time constant
+//#define FREEFALL_TC_N 36
+//#define FREEFALL_TC_D 25
+//#define FREEFALL_FILT_COEFF_N 1
+//#define FREEFALL_FILT_COEFF_D 2
+//// allow approx. 10 "degree-time-constants" of error (stricter than instantaneous)
+//// TC * (thresh / rng * rng_ccr)
+//// TODO: I don't think this filter will work without the setpoint:
+//// could trip back into operation by coincidence while it's still moving
+//// probably want a kind of difference component to make sure it's not moving much anymore
+//#define FREEFALL_THRESH 28
 
 typedef struct joint_phys_s {
 	int32_t T0;
@@ -81,7 +84,8 @@ typedef struct joint_phys_s {
 #define I_DS 7680 // UNFLOAT 30
 #define CCR_PER_RAD_DS 237
 #define CCR_MID_DS 560
-#define RNG_DS 808
+// #define RNG_DS 808
+#define RNG_DS 550
 #define SGN_DS 1
 
 #define POT_LOW_DS 0
@@ -92,7 +96,8 @@ typedef struct joint_phys_s {
 #define SMAX_HW 350 // UNFLOAT 7.5
 #define I_HW 25600 // UNFLOAT 30
 #define CCR_PER_RAD_HW 127
-#define CCR_MID_HW 627
+//#define CCR_MID_HW 627
+#define CCR_MID_HW 550
 #define RNG_HW 400
 #define SGN_HW 1
 #define HW_FREEFALL_CCR 100 // << 900us

@@ -10,6 +10,10 @@
 #include <stdint.h>
 #include <math.h>
 
+uint32_t cantor_pair(uint32_t a, uint32_t b) {
+	return (a + b) * (a + b + 1) / 2 + b;
+}
+
 uint32_t isqrt(uint32_t a_nInput)
 {
 	// thanks https://stackoverflow.com/a/1101217/3925507

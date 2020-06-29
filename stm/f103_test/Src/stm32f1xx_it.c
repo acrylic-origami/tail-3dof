@@ -60,9 +60,9 @@ extern const uint16_t RNGs[3];
 extern const uint16_t PER_RADS[3];
 extern const int8_t RHR_SGNS[3];
 extern volatile int16_t pos[NUM_POS_ELE];
-extern uint8_t _buf_fresh, _con_empty_fresh;
+extern uint8_t _buf_fresh, _con_fresh;
 extern const uint16_t MIDs[3];
-extern uint16_t tick_fin, tick_fin_buf, tick_cur;
+extern volatile uint16_t tick_fin, tick_fin_buf, tick_start_buf, tick_cur;
 // TODO expand these to all the joints
 
 // ENSURE: all of these remain in natural units
@@ -399,95 +399,104 @@ const uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
 extern uint16_t j0_ccr_adjust;
 volatile int16_t lower_lim_break = -1, upper_lim_break = -1;
 volatile uint16_t lower_lim_break_j0_ccr = 0, upper_lim_break_j0_ccr = 0;
+#define NUM_CCR_LPF 8 // delay of approx. 100ms
+volatile ccr_lpf_buf[NUM_CCR_LPF][3] = { 0 };
+volatile ccr_lpf_idx = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if(htim->Instance == TIM2) {
-		if(HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin))
-			lower_lim_break = -1; // re-enable unconditionally if the bottom limsw is reset
+	if(__STATE == GLOBAL_RUN) {
+		if(htim->Instance == TIM2) {
+			if(HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin))
+				lower_lim_break = -1; // re-enable unconditionally if the bottom limsw is reset
 
-		uint16_t tick = ((uint16_t)tick_cur * (NUM_POS - 1)) / tick_fin;
-		tick = min(NUM_POS - 1, tick);
-		switch(motion_state) {
-		case RUN: {
-			if(tick_cur <= tick_fin) {
-				for(uint8_t i = 0; i < 3; i++) {
-					int16_t pos_ = ((pos[tick * POS_STRIDE + i * NUM_POS_DERIV] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
-					pos_ = max(-RNGs[i], min(RNGs[i], pos_));
-					uint16_t ccr = MIDs[i] + pos_;
+			uint16_t tick = pos_idx();
+			switch(motion_state) {
+			case RUN: {
 
-					if(i != 0 || (upper_lim_break < 0 && (lower_lim_break < 0 || (lower_lim_break > 0 && ccr > lower_lim_break_j0_ccr)))) {
-						__HAL_TIM_SET_COMPARE(&htim2, chs[i], ccr);
-					}
-					else if(i == 0) {
-						// force freefall
-						__HAL_TIM_SET_COMPARE(&htim2, chs[i], HW_FREEFALL_CCR);
-						if(upper_lim_break >= 0 && HAL_GPIO_ReadPin(LIMSW2_GPIO_Port, LIMSW2_Pin) && ccr < upper_lim_break_j0_ccr)
-							upper_lim_break--;
-
-						if(ccr > lower_lim_break_j0_ccr && upper_lim_break == -1 && lower_lim_break > 0) { // if lower_lim_break == 0, timed out: lock until reset
-							lower_lim_break--;
-						}
-						if(lower_lim_break == 0) {
-							lower_lim_break += 0 / 1;
-						}
-
-					}
-				}
-				tick_cur++;
-
-				if(spi_valid >= 2) {
-					uint16_t pos_ = pos[(tick > 0 ? tick - 1 : 0) * POS_STRIDE + 1 * NUM_POS_DERIV]; // TODO generalize over all axes
-					error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
-
-					//				{
-					//					// TEMP
-					//					elog[elog_idx & NUM_ELOG_MSK][0] = pos_;
-					//					elog[elog_idx & NUM_ELOG_MSK][1] = ERROR_safety_buf - POT_MID_HS;
-					//					elog_idx++;
-					//				}
-
-					I_safety = I_safety_buf + (I_safety * I_FILT_COEFF_N) / I_FILT_COEFF_D;
-					ERROR_safety = error + (ERROR_safety * ERROR_FILT_COEFF_N) / ERROR_FILT_COEFF_D;
-					if(abs(I_safety) > I_MAX_N || abs(ERROR_safety) > ERROR_MAX_N) {
-						// disable hobbywing
-						//			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, CCR_MID_HW);
-						// TODO disable servo enables
-						error++;
-					}
-				}
-			}
-			else {
-				if(_buf_fresh && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel2, &pos_dbl_buf[1][0], pos, sizeof(pos[0]) * NUM_POS_ELE) == HAL_OK) {
-//					for(uint8_t i = 0; i < 3; i++)
-//						uart_buf[i] = pos_dbl_buf[1][i * NUM_POS_DERIV];
-//					for(uint8_t i = 0; i < 3; i++)
-//						uart_buf[i+3] = pos_dbl_buf[1][(NUM_POS - 1) * POS_STRIDE + i * NUM_POS_DERIV];
+				if(_buf_fresh && HAL_DMA_Start_IT(&hdma_memtomem_dma1_channel2, (uint32_t)(&pos_dbl_buf[1][0]), (uint32_t)(pos), sizeof(pos[0]) * NUM_POS_ELE) == HAL_OK) {
+	//					for(uint8_t i = 0; i < 3; i++)
+	//						uart_buf[i] = pos_dbl_buf[1][i * NUM_POS_DERIV];
+	//					for(uint8_t i = 0; i < 3; i++)
+	//						uart_buf[i+3] = pos_dbl_buf[1][(NUM_POS - 1) * POS_STRIDE + i * NUM_POS_DERIV];
 					//					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
 
 					HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
 					_buf_fresh = 0;
-					_con_empty_fresh = 1;
-					tick_cur = 0;
+					_con_fresh = 1;
+					tick_cur = tick_start_buf;
 					tick_fin = tick_fin_buf;
 				}
-				if(upper_lim_break >= 0 || lower_lim_break >= 0) {
+
+				if(tick_cur <= tick_fin) {
+					for(uint8_t i = 0; i < 3; i++) {
+						int16_t pos_ = ((pos[tick * POS_STRIDE + i * NUM_POS_DERIV] * PER_RADS[i]) >> _W) * RHR_SGNS[i]; // CONVERT
+						pos_ = max(-RNGs[i], min(RNGs[i], pos_));
+						uint16_t ccr = MIDs[i] + pos_;
+						ccr_lpf_buf[ccr_lpf_idx & (NUM_CCR_LPF - 1)][i] = ccr;
+
+//						if(i == 0)
+//							ccr += j0_ccr_adjust;
+
+						if(i != 0 || (upper_lim_break < 0 && (lower_lim_break < 0 || (lower_lim_break > 0 && ccr > lower_lim_break_j0_ccr)))) {
+							uint32_t sum = 0;
+							for(uint8_t j = 0; j < NUM_CCR_LPF; sum += ccr_lpf_buf[j++][i]);
+							__HAL_TIM_SET_COMPARE(&htim2, chs[i], sum / NUM_CCR_LPF);
+						}
+						else {
+							// force freefall
+							__HAL_TIM_SET_COMPARE(&htim2, chs[i], HW_FREEFALL_CCR);
+							if(upper_lim_break >= 0 && HAL_GPIO_ReadPin(LIMSW2_GPIO_Port, LIMSW2_Pin) && ccr < upper_lim_break_j0_ccr)
+								upper_lim_break--;
+
+							if(ccr > lower_lim_break_j0_ccr && upper_lim_break == -1 && lower_lim_break > 0) { // if lower_lim_break == 0, timed out: lock until reset
+								lower_lim_break--;
+							}
+						}
+					}
+					tick_cur++;
+					ccr_lpf_idx++;
+
+					if(spi_valid >= 2) {
+						uint16_t pos_ = pos[(tick > 0 ? tick - 1 : 0) * POS_STRIDE + 1 * NUM_POS_DERIV]; // TODO generalize over all axes
+						error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
+
+						//				{
+						//					// TEMP
+						//					elog[elog_idx & NUM_ELOG_MSK][0] = pos_;
+						//					elog[elog_idx & NUM_ELOG_MSK][1] = ERROR_safety_buf - POT_MID_HS;
+						//					elog_idx++;
+						//				}
+
+						I_safety = I_safety_buf + (I_safety * I_FILT_COEFF_N) / I_FILT_COEFF_D;
+						ERROR_safety = error + (ERROR_safety * ERROR_FILT_COEFF_N) / ERROR_FILT_COEFF_D;
+						if(abs(I_safety) > I_MAX_N || abs(ERROR_safety) > ERROR_MAX_N) {
+							// disable hobbywing
+							//			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, CCR_MID_HW);
+							// TODO disable servo enables
+							error++;
+						}
+					}
+				}
+				else if(upper_lim_break >= 0 || lower_lim_break >= 0) {
 					__HAL_TIM_SET_COMPARE(&htim2, chs[0], HW_FREEFALL_CCR);
 				}
+				break;
 			}
-			break;
+			case FREEFALL:
+				break;
+			}
 		}
-		case FREEFALL:
-			break;
-		}
-	}
-	else {
+		else {
 
+		}
 	}
 }
 void HAL_GPIO_EXTI_Callback(uint16_t pin) {
 	switch(pin) {
 	case LIMSW2_Pin:
-		upper_lim_break = UPPER_LIM_BREAK_INIT; // freefall for some time
-		upper_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		if(upper_lim_break < 0) {
+			upper_lim_break = UPPER_LIM_BREAK_INIT; // freefall for some time
+			upper_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		}
 		break;
 	case LIMSW1_Pin:
 		if(__STATE == GLOBAL_HOMING) {

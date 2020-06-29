@@ -4,6 +4,7 @@
  *  Created on: Apr 19, 2020
  *      Author: derek-lam
  */
+#include "main.h"
 #include "kin.h"
 #include <math.h>
 #include "imath.h"
@@ -71,7 +72,7 @@ void fwd_kin(int32_t *A, int32_t *q, int32_t *r) {
     r[1] = (c[0] * v >> _W) - ((A[3] * s[0] >> _W) * s[2] >> _W);
     r[2] = (s[0] * v >> _W) + ((A[3] * c[0] >> _W) * s[2] >> _W);
 }
-uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t, int32_t prev_t0) {
+uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
 //    volatile int32_t rTi = 0;
 //    for(uint8_t i = 0; i < 3; i++) {
 //    	rTi += T[i] * T[i];
@@ -146,26 +147,24 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t, int32_t prev_t0) {
 
     // TODO evaluate this r_yz vs. r_yz_ (compensated angle based on re-projection)
     t[1] = (atan2((float)T[0], (r_yz * (1 << _W)) - A[1]) * (1L << _W));
+    t[NUM_JOINTS + 1] = t[1]; // j1 is identical in both solutions
 
     volatile int32_t dt0 = asin(z / r_yz) * (1L << _W);
     volatile int32_t t0_base = atan2((float)T[2], T[1]) * (1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
+
     int8_t sgns[2] = { 1, -1 };
-    int8_t sgn;
     int32_t t0s[2] = {
-    		t0_base - sgns[0] * dt0,
+			t0_base - sgns[0] * dt0,
 			t0_base - sgns[1] * dt0
-    };
-    if(abs(t0s[0] - prev_t0) < abs(t0s[1] - prev_t0)) {
-    	t[0] = t0s[0];
-    	sgn = sgns[0];
-    }
-    else {
-    	t[0] = t0s[1];
-    	sgn = sgns[1];
+	};
+    for(uint8_t i = 0; i < 2; i++) {
+    	t[i * NUM_JOINTS] = t0_base - sgns[i] * dt0;
+    	int32_t t2 = (int32_t)((atan2((z * sgns[i]), (y - y0) / c1)) * (1 << _W));
+    	if(t2 > M_PI * (1 << _W))
+        	t2 -= 2 * M_PI * (1 << _W);
+
+    	t[i * NUM_JOINTS + 2] = t2;
     }
 
-    t[2] = (int32_t)((atan2((z * sgn), (y - y0) / c1)) * (1 << _W)); // WATCH: atan2 ignores scaling
-    if(t[2] > M_PI * (1 << _W))
-    	t[2] -= 2 * M_PI * (1 << _W);
     return 0;
 }
