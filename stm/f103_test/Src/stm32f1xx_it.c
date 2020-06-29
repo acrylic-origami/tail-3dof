@@ -400,8 +400,8 @@ extern uint16_t j0_ccr_adjust;
 volatile int16_t lower_lim_break = -1, upper_lim_break = -1;
 volatile uint16_t lower_lim_break_j0_ccr = 0, upper_lim_break_j0_ccr = 0;
 #define NUM_CCR_LPF 8 // delay of approx. 100ms
-volatile ccr_lpf_buf[NUM_CCR_LPF][3] = { 0 };
-volatile ccr_lpf_idx = 0;
+volatile uint16_t ccr_lpf_buf[NUM_CCR_LPF][3] = { 0 };
+volatile uint16_t ccr_lpf_idx = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if(__STATE == GLOBAL_RUN) {
 		if(htim->Instance == TIM2) {
@@ -455,26 +455,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 					tick_cur++;
 					ccr_lpf_idx++;
 
-					if(spi_valid >= 2) {
-						uint16_t pos_ = pos[(tick > 0 ? tick - 1 : 0) * POS_STRIDE + 1 * NUM_POS_DERIV]; // TODO generalize over all axes
-						error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
-
-						//				{
-						//					// TEMP
-						//					elog[elog_idx & NUM_ELOG_MSK][0] = pos_;
-						//					elog[elog_idx & NUM_ELOG_MSK][1] = ERROR_safety_buf - POT_MID_HS;
-						//					elog_idx++;
-						//				}
-
-						I_safety = I_safety_buf + (I_safety * I_FILT_COEFF_N) / I_FILT_COEFF_D;
-						ERROR_safety = error + (ERROR_safety * ERROR_FILT_COEFF_N) / ERROR_FILT_COEFF_D;
-						if(abs(I_safety) > I_MAX_N || abs(ERROR_safety) > ERROR_MAX_N) {
-							// disable hobbywing
-							//			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, CCR_MID_HW);
-							// TODO disable servo enables
-							error++;
-						}
-					}
+//					if(spi_valid >= 2) {
+//						uint16_t pos_ = pos[(tick > 0 ? tick - 1 : 0) * POS_STRIDE + 1 * NUM_POS_DERIV]; // TODO generalize over all axes
+//						error = (pos_ << 1) - (int32_t)(ERROR_safety_buf - POT_MID_HS) * ERROR_SCALE_HS_N / ERROR_SCALE_HS_D;
+//
+//						//				{
+//						//					// TEMP
+//						//					elog[elog_idx & NUM_ELOG_MSK][0] = pos_;
+//						//					elog[elog_idx & NUM_ELOG_MSK][1] = ERROR_safety_buf - POT_MID_HS;
+//						//					elog_idx++;
+//						//				}
+//
+//						I_safety = I_safety_buf + (I_safety * I_FILT_COEFF_N) / I_FILT_COEFF_D;
+//						ERROR_safety = error + (ERROR_safety * ERROR_FILT_COEFF_N) / ERROR_FILT_COEFF_D;
+//						if(abs(I_safety) > I_MAX_N || abs(ERROR_safety) > ERROR_MAX_N) {
+//							// disable hobbywing
+//							//			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, CCR_MID_HW);
+//							// TODO disable servo enables
+//							error++;
+//						}
+//					}
 				}
 				else if(upper_lim_break >= 0 || lower_lim_break >= 0) {
 					__HAL_TIM_SET_COMPARE(&htim2, chs[0], HW_FREEFALL_CCR);

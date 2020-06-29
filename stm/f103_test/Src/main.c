@@ -79,7 +79,7 @@ const hand_ctrl_cfg_t HAND_CTRL_RNGS[NUM_HAND_CTRL_AX] = {
 int16_t pos_dbl_buf[2][NUM_POS_ELE] = { 0 };
 volatile int16_t pos[NUM_POS_ELE] = { 0 };
 volatile uint8_t _buf_fresh = 0, _con_fresh = 0;
-volatile uint16_t tick_fin_buf = 0, tick_fin = 0, tick_start_buf = 0, tick_cur = 1;
+volatile uint16_t tick_fin_buf = 0, tick_fin = 0, tick_start_buf = 0, tick_cur = 1; // start with consumer hungry
 int32_t A[4] = { 0, A1, A2, A3 };
 
 extern volatile uint8_t mcp1130_ch;

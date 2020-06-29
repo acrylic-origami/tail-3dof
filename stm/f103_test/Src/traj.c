@@ -128,9 +128,9 @@ static int32_t smoothstep(int32_t t) {
 	return 3 * (t * t >> _W) - 2 * ((t * t >> _W) * t >> _W);
 }
 static int32_t smoothstep_p(int32_t t) {
-	return 6 * t * (1 << _W - t) >> _W;
+	return 6 * t * ((1 << _W) - t) >> _W;
 }
-uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joint_phys_t *phys) {
+uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, const joint_phys_t *phys) {
 	int32_t vm = x1 - x0;
 	int32_t vtf[2] = { abs((v0 << _W)/ALPHA), abs((v1 << _W)/ALPHA) };
 	int32_t lv[2][2] = {{-176*v0 >> _W, 432*vm >> _W}, {v0, 432*vm >> _W}}; // UNFLOAT 0.6875, 1.6875
@@ -142,7 +142,7 @@ uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, joi
 
 	return populate(lv, lt, bnd, phys, v0 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v0) || populate(rv, rt, bnd, phys, v1 == 0 ? MAX_T_DEFAULT : (ALPHA << _W) / v1);
 }
-void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, int32_t *tr) {
+void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, int16_t *tr) {
 	int32_t av_ = max(abs(av), (1 << _TW) / tf);
 	int32_t bv_ = max(abs(bv), (1 << _TW) / tf);
 
@@ -150,10 +150,10 @@ void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, i
 	int32_t m = (b - a) * t / tf + a, mp = (b - a << _W) / tf; // EXEMPT: * followed by /
 	int32_t r = ((bv * (t - tf) >> _W) + b), rp = bv;
 	if(t < (ALPHA << _W) / av_ && t >= (tf - (ALPHA << _W) / bv_)) {
-		int32_t t0 = t * av_ / ALPHA, t1 = (tf - t) * bv_ / ALPHA;
+		int32_t t0 = t * av_ / ALPHA, t1 = (tf - t) * bv_ / ALPHA, t2 = (t << _W) / tf;
 		int32_t s0 = smoothstep(t0), s1 = smoothstep(t1);
 		int32_t s0p = smoothstep_p(t0), s1p = smoothstep_p(t1);
-		int32_t s2 = (t << _W) / tf, s2p = (1 << _TW) / tf;
+		int32_t s2 = smoothstep(t2), s2p = smoothstep_p(t2);
 		tr[0] =
 			(
 				(l * ((1 << _W) - s0) + m * s0 >> _W)
@@ -177,12 +177,12 @@ void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, i
 				>> _W
 			)
 			+ (
-				((m - r) * s0p + rp * ((1 << _W) - s1) + mp * s1 >> _W)
+				((m - r) * s1p + rp * ((1 << _W) - s1) + mp * s1 >> _W)
 				* s2
 				>> _W
 			)
 			+ (
-				(r * ((1 << _W) - s0) + m * s1 >> _W)
+				(r * ((1 << _W) - s1) + m * s1 >> _W)
 				* s2p
 				>> _W
 			);
@@ -203,6 +203,6 @@ void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, i
 		int32_t s = smoothstep(t_); // EXEMPT: * followed by /
 		int32_t sp = smoothstep_p(t_);
 		tr[0] = r * ((1 << _W) - s) + m * s >> _W;
-		tr[1] = (m - r) * sp + rp * ((r << _W) - s) + mp * s >> _W;
+		tr[1] = (m - r) * sp + rp * ((1 << _W) - s) + mp * s >> _W;
 	}
 }
