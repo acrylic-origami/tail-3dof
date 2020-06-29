@@ -59,6 +59,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+volatile global_state_t __STATE = GLOBAL_RESET;
+
 typedef struct hand_ctrl_cfg_s {
 	uint16_t rng[2];
 	uint16_t lims[2];
@@ -130,6 +132,7 @@ volatile uint32_t uart_buf[UART_BUF_SIZE] = { 0 };
 volatile int8_t uart_buf_fresh = 0;
 int32_t hand_ctrl_norm[2][NUM_HAND_CTRL_AX] = { 0 };
 int16_t hand_ctrl_dpack[4] = {0};
+int16_t j0_ccr_adjust = -RNG_HW / 2;
 /* USER CODE END 0 */
 
 /**
@@ -214,6 +217,17 @@ int main(void)
   mcp1130_txrx();
   uart_rx();
   adc_rx();
+
+  ////////////
+  // HOMING //
+  ////////////
+
+//  __STATE = GLOBAL_HOMING;
+//  for(; __STATE == GLOBAL_HOMING && HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin); j0_ccr_adjust = max(MIN_HOMING_CCR, j0_ccr_adjust - HOMING_STRIDE)) {
+//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, MIDs[0] + j0_ccr_adjust);
+//	  HAL_Delay(HOMING_TICK);
+//  }
+  __STATE = GLOBAL_RUN;
 
   /* USER CODE END 2 */
 

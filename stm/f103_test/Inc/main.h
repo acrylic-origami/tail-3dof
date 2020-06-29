@@ -37,7 +37,9 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef enum global_state_e {
+	GLOBAL_RESET, GLOBAL_HOMING, GLOBAL_RUN, GLOBAL_BREAK
+} global_state_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -79,7 +81,7 @@ void mcp1130_txrx(void);
 #define SERVO1_NSEL_GPIO_Port GPIOA
 #define SERVO2_NSEL_Pin GPIO_PIN_9
 #define SERVO2_NSEL_GPIO_Port GPIOA
-#define LIMSW1_Pin GPIO_PIN_11
+#define LIMSW1_Pin GPIO_PIN_10
 #define LIMSW1_GPIO_Port GPIOA
 #define LIMSW1_EXTI_IRQn EXTI15_10_IRQn
 #define SERVO1_Pin GPIO_PIN_15
@@ -87,6 +89,10 @@ void mcp1130_txrx(void);
 #define SERVO2_Pin GPIO_PIN_3
 #define SERVO2_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
+#define MIN_HOMING_CCR (-RNG_HW)
+#define HOMING_TICK 40 // ms
+#define HOMING_STRIDE 4 // CCR units
+
 #define NUM_HAND_CTRL_BUF 64
 #define NUM_HAND_CTRL_AX 3
 #define HAND_CTRL_BUF_DS 2 // downsampling factor (simple skipping)
@@ -103,7 +109,7 @@ void mcp1130_txrx(void);
 #define POS_STRIDE (NUM_JOINTS * NUM_POS_DERIV)
 #define NUM_POS_ELE (NUM_POS * POS_STRIDE)
 
-#define UART_BUF_SIZE 7
+#define UART_BUF_SIZE 10
 
 #define TRAJ_ITER_LIM 3
 

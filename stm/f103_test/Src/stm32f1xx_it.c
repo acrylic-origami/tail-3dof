@@ -52,6 +52,7 @@ typedef enum motion_state_t_e {
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+extern volatile global_state_t __STATE;
 extern ADC_HandleTypeDef hadc1;
 
 extern int16_t pos_dbl_buf[2][NUM_POS_ELE];
@@ -385,7 +386,7 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE BEGIN EXTI15_10_IRQn 0 */
 
   /* USER CODE END EXTI15_10_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_11);
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_10);
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_12);
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
 
@@ -395,6 +396,7 @@ void EXTI15_10_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 int16_t uart_buf[6];
 const uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
+extern uint16_t j0_ccr_adjust;
 volatile int16_t lower_lim_break = -1, upper_lim_break = -1;
 volatile uint16_t lower_lim_break_j0_ccr = 0, upper_lim_break_j0_ccr = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -488,8 +490,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin) {
 		upper_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
 		break;
 	case LIMSW1_Pin:
-		lower_lim_break = LOWER_LIM_BREAK_TIMEOUT;
-		lower_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		if(__STATE == GLOBAL_HOMING) {
+			__STATE = GLOBAL_RUN;
+		}
+		else {
+			lower_lim_break = LOWER_LIM_BREAK_TIMEOUT;
+			lower_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
+		}
 		break;
 	}
 }
