@@ -85,6 +85,8 @@ void mcp1130_txrx(void);
 #define LIMSW1_Pin GPIO_PIN_10
 #define LIMSW1_GPIO_Port GPIOA
 #define LIMSW1_EXTI_IRQn EXTI15_10_IRQn
+#define HAND_CTRL_EN_N_Pin GPIO_PIN_12
+#define HAND_CTRL_EN_N_GPIO_Port GPIOA
 #define SERVO1_Pin GPIO_PIN_15
 #define SERVO1_GPIO_Port GPIOA
 #define SERVO2_Pin GPIO_PIN_3
@@ -110,8 +112,8 @@ void mcp1130_txrx(void);
 #define POS_STRIDE (NUM_JOINTS * NUM_POS_DERIV)
 #define NUM_POS_ELE (NUM_POS * POS_STRIDE)
 
-#define SPEEDUP_FACTOR_N 7
-#define SPEEDUP_FACTOR_D 4
+#define SPEEDUP_FACTOR_N 1
+#define SPEEDUP_FACTOR_D 1
 
 #define UART_BUF_SIZE 10
 

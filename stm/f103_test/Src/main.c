@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
+#include <stdlib.h>
 #include "main.h"
 #include "adc.h"
 #include "dma.h"
@@ -104,14 +105,6 @@ const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
 
 // bitmaps
 extern const uint8_t bump[NBUMP][NBUMP];
-
-// TEMP
-#define NUM_CART_POS 2
-int32_t Ts_[NUM_CART_POS][6] = {
-		{-20, A1 + A2 + A3 - 40, 0, 0, -77, -77}, // { A2, A1+20, -(A3-40), 0, 77, -77 },
-		{20, A1 + A2 + A3 - 40, 0, 0, -77, 77}, // { -A2, A1+20, A3-40, 0, -77, 77 },
-};
-volatile uint8_t Ts_idx = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -124,16 +117,40 @@ static void adc_rx();
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int32_t hand_ctrl_norm[2][NUM_HAND_CTRL_AX] = { 0 };
+int16_t j0_ccr_adjust = -RNG_HW / 2;
+
 // TEMP
 uint8_t px[2] = { 0 };
 const uint8_t k[2] = { 0xFD, 0x40 };
-
 uint8_t uart_buf_in[UART_BUF_SIZE] = { 0 };
 volatile uint32_t uart_buf[UART_BUF_SIZE] = { 0 };
 volatile int8_t uart_buf_fresh = 0;
-int32_t hand_ctrl_norm[2][NUM_HAND_CTRL_AX] = { 0 };
 int16_t hand_ctrl_dpack[4] = {0};
-int16_t j0_ccr_adjust = -RNG_HW / 2;
+
+#define NUM_WAYPOINTS 19
+int32_t waypoints[NUM_WAYPOINTS][NUM_JOINTS] = {
+	{ 322, 0, 121 },
+	{ 241, 0, 0 },
+	{ 322, 0, 121 },
+	{ -322, 0, -121 },
+	{ -241, 0, 0 },
+	{ -322, 0, -121 },
+	{ 0, -241, -80 },
+	{ 0, 241, 80 },
+	{ 0, -241, -80 },
+	{ 0, 241, 80 },
+	{ -241, -241, -80 },
+	{ 241, 0, 121 },
+	{ -241, 241, -80 },
+	{ -241, -241, -80 },
+	{ -121, 241, -40 },
+	{ 0, -241, 0 },
+	{ 121, 241, 40 },
+	{ 241, -241, 80 },
+	{ -120, 0, 0 }
+};
+uint32_t waypoint_idx = 0;
 /* USER CODE END 0 */
 
 /**
@@ -193,31 +210,8 @@ int main(void)
 
   HAL_GPIO_WritePin(SERVO1_NSEL_GPIO_Port, SERVO1_NSEL_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_RESET);
-//  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, CCR_MID_DS);
-//  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (CCR_MID_DS + (RNG_DS + 300) / 2) - ((RNG_DS + 300) * abs(32 - i)) / 32);
 
-//  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW);
-//  for(int8_t i = 0; i < 64; i++) {
-//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (CCR_MID_DS + (RNG_DS + 300) / 2) - ((RNG_DS + 300) * abs(32 - i)) / 32);
-//	  HAL_Delay(100);
-//  }
-
-//  	for(uint8_t i = 0;; i += 4) {
-//  		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, (256 - abs(256 - (int16_t)(i * 2))) * 400 / 128 + CCR_MID_HW);
-//  		HAL_Delay(200);
-//  	}
-//  for(uint8_t i = 0; ; i++) {
-//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, CCR_MID_DS + RNGs[2] - i * 4);
-//  }
   uint16_t R0 = A[1] + A[2] + A[3];
-//  {
-//	  int32_t t_[3] = { 0, 201, 0 };
-//	  int32_t td_[3] = { -32, 0, 32 };
-//	  volatile float tp_[3];
-//	  volatile uint8_t e = inv_jacob(A, t_, td_, tp_);
-//	  e++;
-//	  while(1);
-//  }
 
   mcp1130_txrx();
   uart_rx();
@@ -227,46 +221,25 @@ int main(void)
   // HOMING //
   ////////////
 
-//  __STATE = GLOBAL_HOMING;
-//  for(; __STATE == GLOBAL_HOMING && HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin); j0_ccr_adjust = max(MIN_HOMING_CCR, j0_ccr_adjust - HOMING_STRIDE)) {
-//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, MIDs[0] + j0_ccr_adjust);
-//	  HAL_Delay(HOMING_TICK);
-//  }
+  __STATE = GLOBAL_HOMING;
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, MIDs[1] - RNGs[1]);
+  while(1);
+  for(; 0 && __STATE == GLOBAL_HOMING && HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin); j0_ccr_adjust = max(MIN_HOMING_CCR, j0_ccr_adjust - HOMING_STRIDE)) {
+	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, MIDs[0] + j0_ccr_adjust);
+	  HAL_Delay(HOMING_TICK);
+  }
   __STATE = GLOBAL_RUN;
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int16_t pos_stash[POS_STRIDE] = { 0 };
   for(uint32_t iter = 0; ; iter++)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-	  while(0) {
-		  for(uint8_t i = 124; i < 132; i++) {
-			  if(hi2c1.State == HAL_I2C_STATE_READY) {
-				  //                        px[(i >> 3) + 1] |= 1 << (i & 7);
-				  //                        for(uint8_t j = 1; j < PX_SIZE; j++) {
-				  //                                px[j] = 1 << (i & 7);
-				  //                        }
-				  //                        px[2] &= 0x1F; // preserve PWM frame
-				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
-
-				  px[0] = 0x18 + i;
-				  px[1] = 0x80;
-				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
-
-				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, k, 2, -1);
-				  px[0] = 0x18 + ((i + 1) % 132);
-				  px[1] = 0x0;
-				  HAL_I2C_Master_Transmit(&hi2c1, AS1130_ADDR, px, 2, -1);
-			  }
-			  px[0]++;
-		  }
-	  }
-
 
 	  {
 		  uint16_t tick = pos_idx();
@@ -283,11 +256,6 @@ int main(void)
 		  AS1130_blit(square, dims, loc, scale);
 	  }
 
-//	  for(uint8_t i = 0; i < 40; i++) {
-//		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW + DEADBAND_HW + i);
-//	  }
-//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, CCR_MID_HW);
-
 	  {
 //		  while(_buf_fresh) {
 //			  // low-priority actions
@@ -296,10 +264,10 @@ int main(void)
 //			  int32_t t_cur[3];
 //			  fwd_kin(A, pos[NUM_POS], t_cur);
 ////			  I_YZ = isqrt(t_cur[1] * t_cur[1] + t_cur[2] * t_cur[2]) / 2 * M_TOT_256;
-//		  }; // TEMP // !uart_buf_fresh
+//		  };
 
 		  int32_t max_tf = 0;
-		  int32_t xyz[3], xyzd[3], *t, v[3], tf[3], tbnd[2], tp[3];
+		  int32_t xyz[3] = { 0 }, xyzd[3] = { 0 }, *t, v[3] = { 0 }, tf[3] = { 0 }, tbnd[2] = { 0 }, tp[3] = { 0 };
 		  float tp_[3];
 		  uint8_t _converged = 0, _hand_ctrl_moved = 0;
 
@@ -328,7 +296,8 @@ int main(void)
 		  {
 			  uint16_t stride = NUM_HAND_CTRL_BUF / NUM_HW_D_COEF / HAND_CTRL_BUF_DS - 1, // -1 to ensure we always miss at least the one potentially incomplete sample currently being DMA'd
 					  n_iter = stride * NUM_HW_D_COEF;
-			  // subsample by `stride` via averaging
+			  // downsample by `stride` via averaging
+			  // plus hard downsampling by HAND_CTRL_BUF_DS
 			  for(uint16_t i = 0; i < n_iter; i++) {
 				  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++) {
 					  hand_ctrl_d_buf[i / stride][k] +=
@@ -389,35 +358,17 @@ int main(void)
 					  xyzd[0] = (((-s0 * s1 * td[2] + c0 * c1 * td[0]) >> (_TW - 2)) * R + xyz[0] * td[1]) >> _W; // dx/dt
 					  xyzd[1] = (-((s0 * c1 * td[2] + c0 * s1 * td[0]) >> (_TW - 2)) * R + xyz[1] * td[1]) >> _W; // dy/dt
 					  xyzd[2] = ((c0 * td[2] >> (_W - 1)) * R + xyz[2] * td[1]) >> _W; // dz/dt
-//					  for(uint8_t j = 0; j < 3; j++)
-//						  hand_ctrl_dpack[j] = xyzd[j];
 
 					  break;
 				  }
 			  }
-
-			  for(uint8_t i = 0; i < NUM_HAND_CTRL_AX; i++) {
-				  //					  hand_ctrl_dpack[i] = xyz[i]; //  * PER_RADS[i] >> _W;
-			  }
-			  //			  for(uint8_t i = 0; i < NUM_HW_D_COEF; i++) {
-			  //				  hand_ctrl_dpack[i + NUM_HAND_CTRL_AX] = hand_ctrl_d_buf[i][1];
-			  //			  }
-			  //			  for(uint8_t i = 0; i < NUM_HW_D_COEF; i++) {
-			  //				  hand_ctrl_dpack[i + NUM_HW_D_COEF + NUM_HAND_CTRL_AX] = hand_ctrl_d_buf[i][2];
-			  //			  }
-
-			  //			  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, MIDs[0] + hand_ctrl_norm[0] * RNGs[0] / R0);
 		  }
 
 		  /////////////////////////////////////////////////////
 		  // SOLVING TARGET POSITION & SPEED VIA INVERSE KIN //
 		  /////////////////////////////////////////////////////
-		  //		  hand_ctrl_norm[0] = 0;
-		  //		  hand_ctrl_norm[1] = 80;
-		  //		  hand_ctrl_norm[2] = 80;
-		  //		  t_prev[0] = 0;
 		  memset(uart_buf, 0, UART_BUF_SIZE * sizeof(uart_buf[0]));
-		  int16_t pos_stash[POS_STRIDE], tick_fin_stash, tick_cur_stash;
+		  int16_t tick_fin_stash, tick_cur_stash;
 		  {
 			  __disable_irq();
 			  _con_fresh = 0;
@@ -428,80 +379,82 @@ int main(void)
 			  __enable_irq();
 		  }
 		  int32_t t_[6] = { 0 };
-		  if(_hand_ctrl_moved && !inv_kin(A, xyz, t_)) { // (!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
-			  uint8_t _unreachable[2] = { 0 };
-			  for(uint8_t i = 0; i < 2; i++) {
-				  // iterate over solutions
-				  for(uint8_t j = 0; j < NUM_JOINTS; j++) {
-					  if(abs(t_[i * NUM_JOINTS + j] * PER_RADS[j] >> _W) > RNGs[j]) {
-						  _unreachable[i] = j + 1;
-						  break;
-					  }
-				  }
-			  }
-			  switch((_unreachable[1] == 0) << 1 | (_unreachable[0] == 0)) {
-			  case 0:
-				  uart_buf[UART_BUF_SIZE - 1] = cantor_pair(_unreachable[0], _unreachable[1]);
-				  break;
-			  case 0b01:
-				  t = &t_[0];
-				  break;
-			  case 0b10:
-				  t = &t_[NUM_JOINTS];
-				  break;
-			  case 0b11:
-				  if(abs(t_[0] - pos_stash[0]) < abs(t_[NUM_JOINTS] - pos_stash[0]))
-					  t = &t_[0];
-				  else
-					  t = &t_[NUM_JOINTS];
-				  break;
-			  }
-			  if((_unreachable[0] == 0 && _unreachable[1] == 0) && !inv_jacob(A, t, xyzd, tp_)) {
-				  _converged = 1;
-				  for(uint8_t i = 0; i < 3; i++) {
-					  tp[i] = (int32_t)(tp_[i] * (1 << _W));
-					  uart_buf[i] = tp[i];
-				  }
-
-				  for(uint8_t i = 0; i < 3 && _converged; i++) {
-					  uint8_t j = 0;
-					  for(
-						int32_t va_ = pos_stash[i * NUM_POS_DERIV + 1], //  * (int32_t)tick_fin_buf / TIM2_FREQ
-						        vb_ = tp[i]
-						; j < TRAJ_ITER_LIM
-						; va_ /= 2, vb_ /= 2, j++
-					  ) {
-						  if(!traj_t(pos_stash[i * NUM_POS_DERIV], t[i], va_, vb_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
-							  tf[i] = (1 << _TW) / tbnd[1];
-							  v[i] = vb_;
-							  //						  if(tf_ > 2 * MAX_TF)
-							  //							  _converged = 0;
-							  hand_ctrl_dpack[3] = 0;
-							  for(uint8_t i = 0; i < 3; i++) {
-								  if(tf[i] > max_tf)
-									  max_tf = tf[i];
-							  }
+		  if(0 && HAL_GPIO_ReadPin(HAND_CTRL_EN_N_GPIO_Port, HAND_CTRL_EN_N_Pin)) {
+			  if(_hand_ctrl_moved && !inv_kin(A, xyz, t_)) { // (!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
+				  uint8_t _unreachable[2] = { 0 };
+				  for(uint8_t i = 0; i < 2; i++) {
+					  // iterate over solutions
+					  for(uint8_t j = 0; j < NUM_JOINTS; j++) {
+						  if(abs(t_[i * NUM_JOINTS + j] * PER_RADS[j] >> _W) > RNGs[j]) {
+							  _unreachable[i] = j + 1;
 							  break;
 						  }
 					  }
-					  if(j == TRAJ_ITER_LIM) {
-						  _converged = 0;
-						  uart_buf[UART_BUF_SIZE - 1] = 2;
-						  break;
+				  }
+				  switch((_unreachable[1] == 0) << 1 | (_unreachable[0] == 0)) {
+				  case 0:
+					  uart_buf[UART_BUF_SIZE - 1] = cantor_pair(_unreachable[0], _unreachable[1]);
+					  break;
+				  case 0b01:
+					  t = &t_[0];
+					  break;
+				  case 0b10:
+					  t = &t_[NUM_JOINTS];
+					  break;
+				  case 0b11:
+					  if(abs(t_[0] - pos_stash[0]) < abs(t_[NUM_JOINTS] - pos_stash[0]))
+						  t = &t_[0];
+					  else
+						  t = &t_[NUM_JOINTS];
+					  break;
+				  }
+				  if((_unreachable[0] == 0 && _unreachable[1] == 0) && !inv_jacob(A, t, xyzd, tp_)) {
+					  _converged = 1;
+					  for(uint8_t i = 0; i < 3; i++) {
+						  tp[i] = (int32_t)(tp_[i] * (1 << _W));
+						  uart_buf[i] = tp[i];
 					  }
 				  }
 			  }
-		  }
-		  else {
-			  uart_buf[UART_BUF_SIZE - 1] = 1;
-		  }
-		  if(_hand_ctrl_moved) {
-			  for(uint8_t i = 0; i < 3; i++) {
-				  uart_buf[i + 6] = xyz[i];
+			  else {
+				  uart_buf[UART_BUF_SIZE - 1] = 1;
 			  }
-//			  uart_buf[7] = tick_cur_stash;
-//			  uart_buf[8] = tick_fin_stash;
-			  HAL_UART_Transmit_IT(&huart3, &uart_buf[UART_BUF_SIZE - 4], 4 * sizeof(uart_buf[0]));
+			  if(_hand_ctrl_moved) {
+				  for(uint8_t i = 0; i < 3; i++) {
+					  uart_buf[i + 6] = xyz[i];
+				  }
+	//			  uart_buf[7] = tick_cur_stash;
+	//			  uart_buf[8] = tick_fin_stash;
+				  HAL_UART_Transmit_IT(&huart3, &uart_buf[UART_BUF_SIZE - 4], 4 * sizeof(uart_buf[0]));
+			  }
+		  }
+
+		  for(uint8_t i = 0; i < 3 && _converged; i++) {
+			  uint8_t j = 0;
+			  for(
+					  int32_t va_ = pos_stash[i * NUM_POS_DERIV + 1], //  * (int32_t)tick_fin_buf / TIM2_FREQ
+					  	  	  vb_ = tp[i]
+							   ; j < TRAJ_ITER_LIM
+							   ; va_ /= 2, vb_ /= 2, j++
+			  ) {
+				  if(!traj_t(pos_stash[i * NUM_POS_DERIV], t[i], va_, vb_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
+					  tf[i] = (1 << _TW) / tbnd[1];
+					  v[i] = vb_;
+					  //						  if(tf_ > 2 * MAX_TF)
+					  //							  _converged = 0;
+					  hand_ctrl_dpack[3] = 0;
+					  for(uint8_t i = 0; i < 3; i++) {
+						  if(tf[i] > max_tf)
+							  max_tf = tf[i];
+					  }
+					  break;
+				  }
+			  }
+			  if(j == TRAJ_ITER_LIM) {
+				  _converged = 0;
+				  uart_buf[UART_BUF_SIZE - 1] = 2;
+				  break;
+			  }
 		  }
 
 		  /////////////

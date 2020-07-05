@@ -73,22 +73,22 @@ void fwd_kin(int32_t *A, int32_t *q, int32_t *r) {
     r[2] = (s[0] * v >> _W) + ((A[3] * c[0] >> _W) * s[2] >> _W);
 }
 uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
-//    volatile int32_t rTi = 0;
+//    int32_t rTi = 0;
 //    for(uint8_t i = 0; i < 3; i++) {
 //    	rTi += T[i] * T[i];
 //    }
-//    volatile float rT = (float)isqrt(rTi_1p) / (1 << _W);
+//    float rT = (float)isqrt(rTi_1p) / (1 << _W);
     int32_t r_yz_i = isqrt(T[1] * T[1] + T[2] * T[2]);
-	volatile float r_yz = (float)r_yz_i / (1 << _W); // WATCH multiply with sqrt
-    volatile int32_t r1p_yz_i = r_yz_i - A[1];
+	float r_yz = (float)r_yz_i / (1 << _W); // WATCH multiply with sqrt
+    int32_t r1p_yz_i = r_yz_i - A[1];
     int32_t r1p_i = isqrt(r1p_yz_i * r1p_yz_i + T[0] * T[0]);
 
-    volatile float c1 = (float)r1p_yz_i / r1p_i;
+    float c1 = (float)r1p_yz_i / r1p_i;
 
-    volatile float y0 = (A[1] + (c1 * A[2])) / (1 << _W);
-    volatile float r1 = (c1 * A[3]) / (1 << _W);
-    volatile float r2 = (float)A[3] / (1 << _W);
-    volatile float y;
+    float y0 = (A[1] + (c1 * A[2])) / (1 << _W);
+    float r1 = (c1 * A[3]) / (1 << _W);
+    float r2 = (float)A[3] / (1 << _W);
+    float y;
 
     if(r1p_i < FEPS || r_yz < FEPS) {
     	// XZ axis: almost no solutions
@@ -104,20 +104,20 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     }
     else {
     	// floats to perfom better around singularities of r1 (hopefully)
-    	volatile float pc[3] = {
+    	float pc[3] = {
     			1.0f / (r1 * r1) - 1.0f / (r2 * r2),
 				(-2.0f * y0) / (r1 * r1),
 				(y0 * y0) / (r1 * r1) + (r_yz * r_yz) / (r2 * r2) - 1.0f
     	};
     	// printf("%.3e\t%.3e\t%.3e\n", pc[0], pc[1], pc[2]);
 
-    	volatile float det = pc[1] * pc[1] - 4 * pc[0] * pc[2];
+    	float det = pc[1] * pc[1] - 4 * pc[0] * pc[2];
     	if(det < 0)
     		return 1;
 
     	float sqrt_det = sqrt(det);
     	y = (-pc[1] + sqrt_det) / 2 / pc[0];
-    	volatile float abs_y = fabs(y);
+    	float abs_y = fabs(y);
     	if(abs_y > y0 + r1) { // could produce real solutions that are invalid: must be checked against ellipse domain
     		y = (-pc[1] - sqrt_det) / 2 / pc[0];
     		abs_y = fabs(y);
@@ -131,13 +131,13 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     }
 
 
-    volatile float z = sqrt(r_yz * r_yz - y * y);
+    float z = sqrt(r_yz * r_yz - y * y);
 
-    // volatile float m0 = z / r_yz; // TODO check if r_yz is the one I want
-    // volatile float m1 = -1.0f / m0;
-    // volatile float y_ = (m1 * r_yz) / (m1 - m0); // WATCH multiply with divide
-    // volatile float z_ = m0 * y_;
-    // volatile float r_yz_ = sqrt(y_ * y_ + z_ * z_); // WATCH multiply with sqrt
+    // float m0 = z / r_yz; // TODO check if r_yz is the one I want
+    // float m1 = -1.0f / m0;
+    // float y_ = (m1 * r_yz) / (m1 - m0); // WATCH multiply with divide
+    // float z_ = m0 * y_;
+    // float r_yz_ = sqrt(y_ * y_ + z_ * z_); // WATCH multiply with sqrt
 
     // if(fabs(1 - c1) < EPS / ((float)(1 << _W)))
     // 	t[1] = 0; // optimizing (perhaps prematurely)
@@ -149,8 +149,8 @@ uint8_t inv_kin(int32_t *A, int32_t *T, int32_t *t) {
     t[1] = (atan2((float)T[0], (r_yz * (1 << _W)) - A[1]) * (1L << _W));
     t[NUM_JOINTS + 1] = t[1]; // j1 is identical in both solutions
 
-    volatile int32_t dt0 = asin(z / r_yz) * (1L << _W);
-    volatile int32_t t0_base = atan2((float)T[2], T[1]) * (1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
+    int32_t dt0 = asin(z / r_yz) * (1L << _W);
+    int32_t t0_base = atan2((float)T[2], T[1]) * (1L << _W); // WATCH: atan2 ignores scaling, but asin needs to be renorm'd
 
     int8_t sgns[2] = { 1, -1 };
     int32_t t0s[2] = {

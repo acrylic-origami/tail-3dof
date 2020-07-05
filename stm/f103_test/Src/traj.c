@@ -5,6 +5,7 @@
  *      Author: derek-lam
  */
 
+#include <stdlib.h>
 #include <math.h>
 #include "traj.h"
 #include "consts.h"
@@ -96,15 +97,15 @@ static uint8_t populate(int32_t* vs, int32_t* ts, int32_t* xbnd, joint_phys_t *p
 			cbnd(xs, xs_);
 		}
 		else {
-			volatile int32_t k_ = (phys->SMAX << _W) / phys->T0;
-			volatile int32_t mid_ = (-c << _W) / d;
-			volatile int32_t a_ = ((b * k_ >> _W) * k_ >> _W);
-			volatile int32_t b_ = (b * 2 * k_ >> _W) * mid_ >> _W;
-			volatile int32_t c_ = ((mid_ * mid_ >> _W) * b >> _W) + a;
+			int32_t k_ = (phys->SMAX << _W) / phys->T0;
+			int32_t mid_ = (-c << _W) / d;
+			int32_t a_ = ((b * k_ >> _W) * k_ >> _W);
+			int32_t b_ = (b * 2 * k_ >> _W) * mid_ >> _W;
+			int32_t c_ = ((mid_ * mid_ >> _W) * b >> _W) + a;
 
-			volatile int32_t R2 = phys->T0 * phys->T0 >> _W;
+			int32_t R2 = phys->T0 * phys->T0 >> _W;
 
-			volatile int32_t x = phys->T0;
+			int32_t x = phys->T0;
 			// easiest way... is sadly numerical root finding.
 			// pros: easy to make into integer algorithm
 			uint8_t i;
@@ -205,4 +206,9 @@ void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, i
 		tr[0] = r * ((1 << _W) - s) + m * s >> _W;
 		tr[1] = (m - r) * sp + rp * ((1 << _W) - s) + mp * s >> _W;
 	}
+}
+int32_t rand_lpf(int32_t prev) {
+  // LPF white noise
+  int32_t r = ((int32_t)rand() - (RAND_MAX >> 1)) >> (15 - _W); // 16-bit signed random #
+  return (prev * RAND_FILT_BETA >> _W) + r / RAND_FILT_STDDEV_MULT; // TIL don't divide both by the stddev mult or that cuts the BETA by that much too
 }

@@ -399,7 +399,7 @@ const uint16_t chs[3] = { TIM_CHANNEL_3, TIM_CHANNEL_1, TIM_CHANNEL_2 };
 extern uint16_t j0_ccr_adjust;
 volatile int16_t lower_lim_break = -1, upper_lim_break = -1;
 volatile uint16_t lower_lim_break_j0_ccr = 0, upper_lim_break_j0_ccr = 0;
-#define NUM_CCR_LPF 8 // delay of approx. 100ms
+#define NUM_CCR_LPF 4 // delay of approx. 50ms
 volatile uint16_t ccr_lpf_buf[NUM_CCR_LPF][3] = { 0 };
 volatile uint16_t ccr_lpf_idx = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -494,7 +494,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin) {
 	switch(pin) {
 	case LIMSW2_Pin:
 		if(upper_lim_break < 0) {
-			upper_lim_break = UPPER_LIM_BREAK_INIT; // freefall for some time
+//			upper_lim_break = UPPER_LIM_BREAK_INIT; // freefall for some time
 			upper_lim_break_j0_ccr = __HAL_TIM_GET_COMPARE(&htim2, chs[0]);
 		}
 		break;

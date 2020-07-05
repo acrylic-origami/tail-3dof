@@ -96,8 +96,8 @@ typedef struct joint_phys_s {
 #define SMAX_HW 350 // UNFLOAT 7.5
 #define I_HW 25600 // UNFLOAT 30
 #define CCR_PER_RAD_HW 127
-//#define CCR_MID_HW 627
-#define CCR_MID_HW 550
+#define CCR_MID_HW 627
+//#define CCR_MID_HW 550
 #define RNG_HW 400
 #define SGN_HW 1
 #define HW_FREEFALL_CCR 100 // << 900us
