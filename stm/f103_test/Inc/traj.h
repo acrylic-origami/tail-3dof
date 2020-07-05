@@ -111,4 +111,9 @@ int32_t sgn(int32_t x);
 uint8_t traj_t(int32_t x0, int32_t x1, int32_t v0, int32_t v1, int32_t *bnd, const joint_phys_t *phys);
 void lerp(int32_t a, int32_t b, int32_t av, int32_t bv, int32_t tf, int32_t t, int16_t *tr);
 
+#define RAND_FILT_BETA 250 // UNFLOAT 0.996
+#define RAND_FILT_VAR_MULT 32678 // UNFLOAT atan(pi/ln(BETA))/ln(BETA)/pi = 24.648
+#define RAND_FILT_STDDEV_MULT 1270 // UNFLOAT sqrt(RAND_FILT_VAR_MULT)
+int32_t rand_lpf(int32_t prev);
+
 #endif /* TRAJ_H_ */

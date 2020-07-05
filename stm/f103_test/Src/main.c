@@ -428,6 +428,21 @@ int main(void)
 				  HAL_UART_Transmit_IT(&huart3, &uart_buf[UART_BUF_SIZE - 4], 4 * sizeof(uart_buf[0]));
 			  }
 		  }
+		  else {
+//			  HAL_Delay(rand() >> 21);
+//			  for(uint8_t i = 0; i < NUM_JOINTS; i++) {
+//				  t_[i] = (((rand() - (RAND_MAX >> 1)) >> (31 - _W)) * I_PI) >> _W; // rand_lpf((int32_t)pos_stash[i*NUM_POS_DERIV] << (15 - _W)) >> (15 - _W); // push up to 15-bit to match rand()
+//				  uart_buf[i] = t_[i];
+//			  }
+//			  t = &t_[0];
+//			  _converged = 1;
+//			  HAL_UART_Transmit_IT(&huart3, &uart_buf[0], 3 * sizeof(uart_buf[0]));
+
+			  if(tick_cur >= tick_fin && !_buf_fresh) {
+				  t = &waypoints[(waypoint_idx++) % NUM_WAYPOINTS][0];
+				  _converged = 1;
+			  }
+		  }
 
 		  for(uint8_t i = 0; i < 3 && _converged; i++) {
 			  uint8_t j = 0;
