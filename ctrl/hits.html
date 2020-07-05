@@ -1,0 +1,15 @@
+<html>
+<head>
+	<script>
+		window.addEventListener('load', e => {
+			document.getElementById('i').addEventListener('input', e => {
+				const n = Math.floor((e.target.value - 0) / 101.0 * 32);
+				document.getElementById('main').src = `hits-ikfast-c/${n}.png`;
+				document.getElementById('n').innerHTML = n;
+			});
+		});
+	</script>
+</head>
+<body><div><img src="" alt="" width="256" height="256" style="image-rendering:crisp-edges" id="main"></div><input type="range" id="i" min="0" max="100"><div id="n"></div>
+</body>
+</html>

@@ -1,0 +1,555 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "adc.h"
+#include "dma.h"
+#include "i2c.h"
+#include "spi.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "ik_test.h"
+#include <stdlib.h>
+#include "kin.h"
+#include "traj.h"
+#include "consts.h"
+#include "math_util.h"
+#include "as1130.h"
+#include "imath.h"
+#include "hand_ctrl.h"
+#include <math.h>
+#include <string.h>
+//#include <math.h>
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+volatile global_state_t __STATE = GLOBAL_RESET;
+
+typedef struct hand_ctrl_cfg_s {
+	int16_t rng[2];
+	uint16_t lims[2];
+	int8_t sgn;
+} hand_ctrl_cfg_t;
+volatile uint16_t hand_ctrl_buf[NUM_HAND_CTRL_BUF * NUM_HAND_CTRL_AX] = { 0 };
+uint16_t hand_ctrl_buf_2[NUM_HAND_CTRL_BUF * NUM_HAND_CTRL_AX] = { 0 };
+int32_t hand_ctrl_norm[2][NUM_HAND_CTRL_AX] = { 0 };
+const int32_t HAND_CTRL_D_COEF[NUM_HAND_CTRL_D_COEF] = { -85, 384, -768, 469 };
+const hand_ctrl_cfg_t HAND_CTRL_RNGS[NUM_HAND_CTRL_AX] = {
+//	{ .rng = { 800, 4600 }, .lims = { 1200, 4096 }, .sgn = 1 },
+//	{ .rng = { 0, 3198 }, .lims = { 0, 1600 }, .sgn = -1 },
+//	{ .rng = { -500, 4600 }, .lims = { 509, 3600 }, .sgn = 1 },
+		{ .rng = { 0, 4096 }, .lims = { 0, 4096 }, .sgn = 1 },
+		{ .rng = { 0, 3198 }, .lims = { 0, 1600 }, .sgn = -1 },
+		{ .rng = { 0, 4096 }, .lims = { 0, 4096 }, .sgn = 1 },
+};
+extern const int16_t HAND_CTRL_LUT[8][16][16][2][3];
+// map the ADC via channel order to XYZ
+
+//volatile uint8_t adc_ch = 0, adc_buf_idx = 0;
+int16_t pos_dbl_buf[2][NUM_POS_ELE] = { 0 };
+volatile int16_t pos[NUM_POS_ELE] = { 0 };
+volatile uint8_t _buf_fresh = 0, _con_fresh = 0;
+volatile uint16_t tick_fin_buf = 0, tick_fin = 0, tick_start_buf = 0, tick_cur = 1; // start with consumer hungry
+int32_t A[4] = { 0, A1, A2, A3 };
+
+volatile int32_t uart_buf[10];
+
+extern DMA_HandleTypeDef hdma_adc2;
+extern UART_HandleTypeDef huart2;
+const joint_phys_t JOINT_PHYS[3] = {
+		{ T0_HW, SMAX_HW, I_HW },
+		{ T0_HS, SMAX_HS, I_HS },
+		{ T0_DS, SMAX_DS, I_DS },
+};
+const uint16_t MIDs[3] = { CCR_MID_HW, CCR_MID_HS, CCR_MID_DS };
+const uint16_t RNGs[3] = { RNG_HW / 2, RNG_HS / 2, RNG_DS / 2 };
+const uint16_t PER_RADS[3] = { CCR_PER_RAD_HW, CCR_PER_RAD_HS, CCR_PER_RAD_DS };
+int32_t vf_prev[3] = { 0 }; // previous final velocity
+int32_t t_prev[3] = { 0 }; // previous target angles (after inv kin)
+const int8_t RHR_SGNS[3] = { SGN_HW, SGN_HS, SGN_DS };
+
+// bitmaps
+extern const uint8_t bump[NBUMP][NBUMP];
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+/* USER CODE BEGIN PFP */
+static void sph2xyz(int32_t *sph, int32_t *sphd, int32_t *xyz, int32_t *xyzd);
+uint16_t pos_idx(void);
+void mcp1130_txrx(void);
+static void adc_rx();
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_USART2_UART_Init();
+  MX_ADC2_Init();
+  MX_I2C1_Init();
+  MX_SPI1_Init();
+  MX_TIM2_Init();
+  /* USER CODE BEGIN 2 */
+
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  AS1130_Init();
+
+  htim2.Instance->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+
+  HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);uint16_t R0 = A[1] + A[2] + A[3];
+
+  mcp1130_txrx();
+  adc_rx();
+
+  ////////////
+  // HOMING //
+  ////////////
+
+  __STATE = GLOBAL_HOMING;
+  //  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, MIDs[1] - RNGs[1]);
+  //  while(1);
+//  for(; 0 && __STATE == GLOBAL_HOMING && HAL_GPIO_ReadPin(LIMSW1_GPIO_Port, LIMSW1_Pin); j0_ccr_adjust = max(MIN_HOMING_CCR, j0_ccr_adjust - HOMING_STRIDE)) {
+//	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, MIDs[0] + j0_ccr_adjust);
+//	  HAL_Delay(HOMING_TICK);
+//  }
+  __STATE = GLOBAL_RUN;
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  int16_t pos_stash[POS_STRIDE] = { 0 };
+  for (volatile uint32_t ticks = 0; ; ticks++)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+	  {
+		  uint16_t tick = pos_idx();
+		  uint16_t loc[2] = {
+				  (pos[tick * POS_STRIDE + 1 * NUM_POS_DERIV] * PER_RADS[1] / RNGs[1] / 2) + 127,
+				  -(pos[tick * POS_STRIDE + 0 * NUM_POS_DERIV] * PER_RADS[0] / RNGs[0] / 2) + 127,
+		  };
+		  uint8_t *square = bump; // { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, };
+		  uint16_t dims[2] = { NBUMP, NBUMP }; // { 3, 3 };
+		  uint16_t scale[2] = {
+				  32, // + abs(pos[tick * POS_STRIDE + 0 * NUM_POS_DERIV] - pos[max(0, tick - 1) * POS_STRIDE + 0 * NUM_POS_DERIV]) * 512 * 6 / NBUMP,
+				  32, // + abs(pos[tick * POS_STRIDE + 1 * NUM_POS_DERIV] - pos[max(0, tick - 1) * POS_STRIDE + 1 * NUM_POS_DERIV]) * 512 * 6 / NBUMP
+		  };
+		  AS1130_blit(square, dims, loc, scale);
+	  }
+
+	  {
+		  int32_t max_tf = 0;
+		  int32_t xyz[3] = { 0 }, xyzd[3] = { 0 }, t[3] = { 0 }, v[3] = { 0 }, tf[3] = { 0 }, tbnd[2] = { 0 }, tp[3] = { 0 };
+		  float tp_[3];
+		  uint8_t _converged = 0, _hand_ctrl_moved = 0;
+
+		  ///////////////////////////////
+		  // CONVERSIONS FOR HAND CTRL //
+		  ///////////////////////////////
+
+		  // calculate hand controller speeds
+		  uint8_t hand_ctrl_i0;
+		  {
+			  size_t tf_size = NUM_HAND_CTRL_BUF * NUM_HAND_CTRL_AX * sizeof(hand_ctrl_buf[0]);
+			  //			  __disable_irq();
+			  // sensitive region copying buffer
+			  // consider disabling interrupts
+			  // although this should happen much faster than values change on the controller
+			  // that's what's really important
+			  hand_ctrl_i0 = hdma_adc2.Instance->CNDTR;
+			  memcpy(hand_ctrl_buf_2, hand_ctrl_buf, tf_size);
+			  //			  __enable_irq();
+		  }
+
+		  hand_ctrl_i0 /= NUM_HAND_CTRL_AX; // watch for round-down division
+		  hand_ctrl_i0 = (NUM_HAND_CTRL_BUF - hand_ctrl_i0 + 2) % NUM_HAND_CTRL_BUF; // (NUM_HAND_CTRL_BUF - NUM_HAND_CTRL_D_COEF - 1)
+		  int32_t hand_ctrl_d_buf[NUM_HAND_CTRL_D_COEF][NUM_HAND_CTRL_AX] = { 0 },
+				  hand_ctrl_d[NUM_HAND_CTRL_AX] = { 0 }; // 256-units
+		  {
+			  uint16_t stride = NUM_HAND_CTRL_BUF / NUM_HAND_CTRL_D_COEF / HAND_CTRL_BUF_DS - 1, // -1 to ensure we always miss at least the one potentially incomplete sample currently being DMA'd
+					  n_iter = stride * NUM_HAND_CTRL_D_COEF;
+			  // downsample by `stride` via averaging
+			  // plus hard downsampling by HAND_CTRL_BUF_DS
+			  for(uint16_t i = 0; i < n_iter; i++) {
+				  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++) {
+					  hand_ctrl_d_buf[i / stride][k] +=
+							  max(HAND_CTRL_RNGS[k].lims[0],
+									  min(HAND_CTRL_RNGS[k].lims[1],
+											  hand_ctrl_buf_2[((hand_ctrl_i0 + i * HAND_CTRL_BUF_DS) & (NUM_HAND_CTRL_BUF - 1)) * NUM_HAND_CTRL_AX + k]
+									  )
+							  );
+				  }
+			  }
+			  for(uint16_t i = 0; i < NUM_HAND_CTRL_D_COEF; i++) {
+				  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++) {
+					  hand_ctrl_d_buf[i][k] /= stride;
+				  }
+			  }
+
+			  // perform derivative
+			  if(0) {
+				  const uint16_t HALF_ADC_BITS = 9;
+				  for(uint16_t i = 0; i < NUM_HAND_CTRL_D_COEF; i++) {
+					  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++)
+						  hand_ctrl_d[k] +=
+								  ((hand_ctrl_d_buf[i][k] * HAND_CTRL_D_COEF[i]) >> HALF_ADC_BITS) // cut down dynamic range a bit
+								  * R0 / (stride * HAND_CTRL_BUF_DS) * ADC_FREQ / NUM_HAND_CTRL_AX
+								  / ((HAND_CTRL_RNGS[k].rng[1] - HAND_CTRL_RNGS[k].rng[0] >> 1) >> HALF_ADC_BITS)
+								  * HAND_CTRL_RNGS[k].sgn
+								  >> _W; // convert to 256-m/s
+				  }
+			  }
+
+			  // average previously subsampled values
+			  memset(&hand_ctrl_norm[1][0], 0, NUM_HAND_CTRL_AX * sizeof(hand_ctrl_norm[1][0]));
+			  for(uint16_t i = 0; i < NUM_HAND_CTRL_D_COEF; i++) {
+				  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++)
+					  hand_ctrl_norm[1][k] +=
+							  ((hand_ctrl_d_buf[i][k] - ((HAND_CTRL_RNGS[k].rng[1] + HAND_CTRL_RNGS[k].rng[0]) >> 1)) << _W)
+							  / (HAND_CTRL_RNGS[k].rng[1] - HAND_CTRL_RNGS[k].rng[0] >> 1)
+							  * HAND_CTRL_RNGS[k].sgn;
+			  }
+			  for(uint16_t k = 0; k < NUM_HAND_CTRL_AX; k++) {
+				  hand_ctrl_norm[1][k] /= NUM_HAND_CTRL_D_COEF; // convert to 256-norm (+/-1) centered around 0
+			  }
+
+			  for(uint8_t i = 0; i < NUM_HAND_CTRL_AX; i++) {
+				  if(abs(hand_ctrl_norm[0][i] - hand_ctrl_norm[1][i]) > HAND_CTRL_DEADBAND) {
+					  memcpy(&hand_ctrl_norm[0][0], &hand_ctrl_norm[1][0], NUM_HAND_CTRL_AX * sizeof(hand_ctrl_norm[1][0]));
+					  _hand_ctrl_moved = 1;
+					  // itrig functions domain 0->256 => 0->2pi, range -128->127 => -1->1
+					  // controller 0 1 2 -> yaw radius pitch
+//					  int32_t sph = { hand_ctrl_norm[0][2], hand_ctrl_norm[0][0], hand_ctrl_norm[0][1] };
+//					  int32_t sphd = { hand_ctrl_d[2], hand_ctrl_d[0], hand_ctrl_d[1] };
+//					  sph2xyz(sph, sphd, xyz, xyzd);
+					  break;
+				  }
+			  }
+		  }
+
+		  int16_t tick_fin_stash, tick_cur_stash;
+		  {
+			  __disable_irq();
+			  _con_fresh = 0;
+			  tick_fin_stash = tick_fin;
+			  tick_cur_stash = tick_cur;
+			  uint16_t tick = pos_idx();
+			  memcpy(pos_stash, &pos[tick * POS_STRIDE], POS_STRIDE * sizeof(pos[0]));
+			  __enable_irq();
+		  }
+
+		  if(_hand_ctrl_moved) { // (!inv_kin(A, Ts_[Ts_idx & (NUM_CART_POS - 1)], t, t_prev[0]) && !inv_jacob(A, t, &Ts_[Ts_idx & (NUM_CART_POS - 1)][3], tp_)) { // uart_buf, uart_buf[3]
+			  uint32_t dist_wgts[3] = { 2, 1, 1 };
+			  {
+				  // az, el, rad
+				  int32_t sph[3] = { -hand_ctrl_norm[0][2], hand_ctrl_norm[0][0], hand_ctrl_norm[0][1] };
+				  int32_t sphd[3] = { hand_ctrl_d[2], hand_ctrl_d[0], hand_ctrl_d[1] };
+				  uart_buf[0] = sph[0];uart_buf[1] = sph[1];uart_buf[2] = sph[2];
+				  uint8_t lut_xyz[3] = { abs(sph[0]) >> (_W - 3), (sph[1] + (1 << _W)) >> ((_W + 1) - 4), sph[2] >> (_W - 4) };
+				  uint32_t min_dist = 0xFFFFFFFF;
+				  for(uint8_t i = 0; i < 2; i++) {
+					  int16_t *t_ = &HAND_CTRL_LUT[lut_xyz[0]][lut_xyz[1]][lut_xyz[2]][i][0];
+					  if(t_[0] != HAND_CTRL_LUT_NONE) {
+						  uint32_t dist = 0;
+						  for(uint8_t j = 0; j < 3; j++) {
+							  dist += dist_wgts[j] * abs(t_[j] - pos_stash[j]);
+						  }
+						  if(dist < min_dist) {
+							  for(uint8_t j = 0; j < 3; j++) {
+								  t[j] = t_[j];
+							  }
+							  t[1] *= sgn(sph[0]);
+							  min_dist = dist;
+							  _converged = 1;
+						  }
+					  }
+				  }
+			  }
+
+			  if(0) {
+				  IkSingleDOFSolutionBase solns[8] = { 0 };
+
+				  int sol_idxs[8] = { 0 };
+				  float xyzf[3] = { // remap axes: zxy <- xyz
+					(float)xyz[1] / (1 << _W),
+					(float)xyz[2] / (1 << _W),
+					-(float)xyz[0] / (1 << _W),
+				  };
+				  float min_dist = infinityf();
+				  ComputeIk(xyzf, solns, sol_idxs);
+				  for(uint8_t i = 0; i < 8; i++) {
+					  float dist = 0.0f;
+					  if(sol_idxs[i]) {
+						  for(uint8_t j = 0; j < 3; j++) {
+							  dist += dist_wgts[j] * fabs(solns[i].sols[j].foffset - (float)pos_stash[j] / (1 << _W));
+						  }
+						  if(dist < min_dist) {
+							  for(uint8_t j = 0; j < 3; j++) {
+								  t[j] = (int32_t)(solns[i].sols[j].foffset * (1 << _W));
+							  }
+							  min_dist = dist;
+							  _converged = 1;
+						  }
+					  }
+				  }
+				  // inv_jacob adds about 12KB to the program due to LAPACK: be cautious about enabling
+	//			  if(_converged && inv_jacob(A, t, xyzd, tp_)) {
+	//				  for(uint8_t i = 0; i < 3; i++) {
+	//					  tp[i] = (int32_t)(tp_[i] * (1 << _W));
+	//				  }
+	//			  }
+			  }
+		  }
+
+		  for(uint8_t i = 0; i < 3 && _converged; i++) {
+			  uint8_t j = 0;
+			  for(
+					  int32_t va_ = pos_stash[i * NUM_POS_DERIV + 1], //  * (int32_t)tick_fin_buf / TIM2_FREQ
+					  vb_ = tp[i]
+							   ; j < TRAJ_ITER_LIM
+							   ; va_ /= 2, vb_ /= 2, j++
+			  ) {
+				  if(!traj_t(pos_stash[i * NUM_POS_DERIV], t[i], va_, vb_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
+					  tf[i] = (1 << _TW) / tbnd[1];
+					  v[i] = vb_;
+					  //						  if(tf_ > 2 * MAX_TF)
+					  //							  _converged = 0;
+					  for(uint8_t i = 0; i < 3; i++) {
+						  if(tf[i] > max_tf)
+							  max_tf = tf[i];
+					  }
+					  break;
+				  }
+			  }
+			  if(j == TRAJ_ITER_LIM) {
+				  _converged = 0;
+				  break;
+			  }
+		  }
+		  if(_converged) {
+			  for(uint8_t i = 0; i < 3; i++) {
+//				  uart_buf[i] = hand_ctrl_d_buf[0][i];
+//				  uart_buf[3 + i] = xyz[i];
+				  uart_buf[3 + i] = t[i];
+			  }
+			  HAL_UART_Transmit_IT(&huart2, uart_buf, 6 * sizeof(uart_buf[0]));
+			  tick_fin_buf = (max_tf * TIM2_FREQ * SPEEDUP_FACTOR_D / SPEEDUP_FACTOR_N) >> _W; // WATCH: TIM3_FREQ is base units
+			  tick_fin_buf = max(1, tick_fin_buf);
+
+			  for(uint8_t i = 0; i < NUM_POS; i++) {
+				  for(uint8_t j = 0; j < 3; j++) {
+					  lerp(pos_stash[j * NUM_POS_DERIV], t[j], pos_stash[j * NUM_POS_DERIV + 1], v[j], max_tf, (i * max_tf) / (NUM_POS - 1), &pos_dbl_buf[0][i * POS_STRIDE + j * NUM_POS_DERIV]); // WATCH: NUM_POS and PER_RADS is natural units
+					  // interestingly, the integer arithmetic introduces rounding-like errors, not only floor-like errors (e.g. skips up to 2)
+				  }
+			  }
+			  _buf_fresh = 0;
+			  while(hdma_memtomem_dma1_channel1.Instance->CNDTR); // wait for DMA to finish transferring buffer
+			  uint16_t next_tick_start;
+			  if(_con_fresh) {
+				  // i.e. it took a fresh buffer in the time it took to calculate the next result
+				  // by smoothness and speed, the linear approximation says we're okay to jump by the number of ticks elapsed
+				  next_tick_start = tick_cur - tick_start_buf;
+			  }
+			  else {
+				  next_tick_start = tick_cur - tick_cur_stash;
+			  }
+			  if(next_tick_start < tick_fin_buf) {
+				  // possible that the timer might have taken the recent buffer and outstripped the brand new one we made
+				  // in that case, trash this conversion
+				  memcpy(&pos_dbl_buf[1][0], &pos_dbl_buf[0][0], sizeof(pos_dbl_buf[0][0]) * NUM_POS_ELE);
+				  tick_start_buf = next_tick_start;
+				  _buf_fresh = 1;
+			  }
+			  _con_fresh = 0;
+		  }
+	  }
+
+	  HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+  /** Initializes the CPU, AHB and APB busses clocks 
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB busses clocks 
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV8;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV8;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_ADC12;
+  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
+  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* USER CODE BEGIN 4 */
+volatile int32_t I_safety = 0, ERROR_safety = 0;
+volatile uint16_t I_safety_buf = 0, ERROR_safety_buf = 0;
+volatile uint8_t mcp1130_ch = 1;
+volatile uint16_t mcp1130_mosi = 0;
+void mcp1130_txrx() {
+	HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_SET);
+	asm("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;"); // try to guarantee at least 330ns of hold time
+	HAL_GPIO_WritePin(SERVO2_NSEL_GPIO_Port, SERVO2_NSEL_Pin, GPIO_PIN_RESET);
+	asm("nop;nop;nop;nop;nop;"); // try to guarantee at least 100/0.96 ns of hold time
+	mcp1130_mosi = MCP3002_CONFIG | (mcp1130_ch << MCP3002_ODD_SIGN_Pos);
+	volatile uint16_t *rx = mcp1130_ch ? &ERROR_safety_buf : &I_safety_buf;
+	HAL_SPI_TransmitReceive_IT(&hspi1, &mcp1130_mosi, rx, 1);
+}
+void adc_rx(void) {
+	HAL_ADC_Start_DMA(&hadc2, hand_ctrl_buf, NUM_HAND_CTRL_BUF * NUM_HAND_CTRL_AX);
+}
+uint16_t pos_idx(void) {
+	return min(NUM_POS - 1, (tick_cur * (NUM_POS - 1)) / tick_fin);
+}
+static void sph2xyz(int32_t *sph, int32_t *sphd, int32_t *xyz, int32_t *xyzd) {
+	// sph arguments are azimuth, elevation, radius
+	// `sph` angles are normalized -256 - 256 => -pi/2 - pi/2
+	// `sph` radius is in normalized 256 => [HAND_R0, HAND_R1]
+
+	int32_t az = (sph[0] * 184) >> (_W + 2), // 184 = UNFLOAT (1.13 / (PI / 2))
+			el = ((sph[1] * 416 >> _W) + 160) >> 2; // UNFLOAT range [-10/16, 1]
+	  int32_t caz = icos(az), cel = icos(el),
+			  saz = isin(az), sel = isin(el);
+	  int32_t R = (sph[2] * (HAND_R1 - HAND_R0) >> _W) + HAND_R0;
+	  xyz[0] = (cel * saz >> (_W - 2)) * R >> _W;
+	  xyz[1] = (cel * caz >> (_W - 2)) * R >> _W;
+	  xyz[2] = (sel << 1) * R >> _W;
+
+	  xyzd[0] = (((-sel * saz * sphd[1] + cel * caz * sphd[0]) >> (_TW - 2)) * R + xyz[0] * sphd[2]) >> _W; // dx/dt
+	  xyzd[1] = (-((sel * caz * sphd[1] + cel * saz * sphd[0]) >> (_TW - 2)) * R + xyz[1] * sphd[2]) >> _W; // dy/dt
+	  xyzd[2] = ((cel * sphd[1] >> (_W - 1)) * R + xyz[2] * sphd[2]) >> _W; // dz/dt
+}
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{ 
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
