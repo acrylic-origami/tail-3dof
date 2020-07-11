@@ -17,7 +17,7 @@
 #define MAX_T_DEFAULT 0x7FFFFFFF
 
 // Newton's method limit
-#define TIM_ITER_LIM 16
+#define TIM_ITER_LIM 32
 #define TIM_ITER_EPS 16384 // UNFLOAT 64
 
 //// safety
@@ -68,7 +68,7 @@ typedef struct joint_phys_s {
 // Hitec D645
 #define T0_HS 4096 // UNFLOAT 16.0
 #define SMAX_HS 1577 // UNFLOAT 6.16
-#define I_HS 20480 // UNFLOAT 80
+#define I_HS 1500 // UNFLOAT 23.4
 
 #define CCR_PER_RAD_HS 252
 #define CCR_MID_HS 562
@@ -81,7 +81,7 @@ typedef struct joint_phys_s {
 // DSServo 3218MG
 #define T0_DS 5120 // UNFLOAT 20.0
 #define SMAX_DS 1920 // UNFLOAT 7.5
-#define I_DS 7680 // UNFLOAT 30
+#define I_DS 1000 // UNFLOAT 30
 #define CCR_PER_RAD_DS 237
 #define CCR_MID_DS 560
 // #define RNG_DS 808
@@ -94,10 +94,10 @@ typedef struct joint_phys_s {
 // Hobbywing
 #define T0_HW 36310 // UNFLOAT 20.0
 #define SMAX_HW 350 // UNFLOAT 7.5
-#define I_HW 25600 // UNFLOAT 30
+#define I_HW 3200 // UNFLOAT 50
 #define CCR_PER_RAD_HW 127
-#define CCR_MID_HW 627
-//#define CCR_MID_HW 550
+//#define CCR_MID_HW 627
+#define CCR_MID_HW 680
 #define RNG_HW 400
 #define SGN_HW 1
 #define HW_FREEFALL_CCR 100 // << 900us

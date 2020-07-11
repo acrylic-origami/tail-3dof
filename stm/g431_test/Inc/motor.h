@@ -16,8 +16,8 @@ void motor_tick(void);
 #define TIM1_POL_MSK 0b101010101010
 #define NUM_CTRL_D_BUF 4
 
-#define PWMIN2TARG_N 1
-#define PWMIN2TARG_D 10
+#define PWMIN2TARG_N 2
+#define PWMIN2TARG_D 13
 
 #define MIN_PWMIN_PULSE 500
 #define MAX_PWMIN_PULSE 2500
@@ -34,7 +34,7 @@ void motor_tick(void);
 #define CTRL2CCR_N 6
 #define CTRL2CCR_D 1
 #define MAX_CCR 230
-#define MAX_TICK 240
+#define MAX_TICK 70
 #define HALL_TICK_BLACKOUT 3 // number of TIM6 cycles to blackout on timer-based ticks
 #define PCCR 220
 // Note about PCC:

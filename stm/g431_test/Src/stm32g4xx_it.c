@@ -254,7 +254,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 volatile uint16_t tim_posedge = 0;
 volatile uint8_t last_r = 0;
 extern volatile int16_t pwmin;
-volatile int16_t pwmins[4] = { 0 };
+volatile int16_t pwmins[64] = { 0 };
 volatile uint8_t pwmins_idx = 0;
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if(GPIO_Pin == PWMIN_Pin) {
@@ -266,9 +266,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 			else
 				pwmin = tim + (0xFFFF - tim_posedge);
 //			if(pwmin_ < MAX_PWMIN_PULSE && pwmin_ > MIN_PWMIN_PULSE) {
-			pwmins[(++pwmins_idx) & 3] = pwmin;
+			pwmins[(++pwmins_idx) & 63] = pwmin;
 		}
-		else if(r == 1) {
+		else if(last_r == 0 && r == 1) {
 			tim_posedge = tim;
 		}
 		last_r = r;

@@ -21,7 +21,4 @@ uint8_t AS1130_xy2idx(uint8_t x, uint8_t y);
 #define ARRAY_COLS 6
 #define ARRAY_ROW_FOLDING 2
 
-// hardcoded bitmaps
-#define NBUMP 32
-
 #endif /* AS1130_H_ */
