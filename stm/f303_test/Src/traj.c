@@ -14,6 +14,9 @@
 int32_t sgn(int32_t x) {
 	return x > 0 ? 1 : -1;
 }
+float fsgn(float x) {
+	return x > 0 ? 1.0f : -1.0f;
+}
 static int32_t cmin(int32_t a, int32_t b) {
 	if(a < 0)
 		return b;

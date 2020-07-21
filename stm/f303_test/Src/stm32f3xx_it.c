@@ -313,7 +313,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 				//						uart_buf[i+3] = pos_dbl_buf[1][(NUM_POS - 1) * POS_STRIDE + i * NUM_POS_DERIV];
 				//					HAL_UART_Transmit_IT(&huart3, uart_buf, 6 * sizeof(uart_buf[0]));
 
-				HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
+//				HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
 				_buf_fresh = 0;
 				_con_fresh = 1;
 				tick_cur = tick_start_buf;

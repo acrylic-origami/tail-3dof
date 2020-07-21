@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include "kin.h"
 #include "traj.h"
+#include "traj_qsp.h"
 #include "consts.h"
 #include "math_util.h"
 #include "as1130.h"
@@ -74,11 +75,11 @@ int32_t hand_ctrl_norm[2][NUM_HAND_CTRL_AX] = { 0 };
 const int32_t HAND_CTRL_D_COEF[NUM_HAND_CTRL_D_COEF] = { -85, 384, -768, 469 };
 const hand_ctrl_cfg_t HAND_CTRL_RNGS[NUM_HAND_CTRL_AX] = {
 //	{ .rng = { 800, 4600 }, .lims = { 1200, 4096 }, .sgn = 1 },
-//	{ .rng = { 0, 3198 }, .lims = { 0, 1600 }, .sgn = -1 },
+//	{ .rng = { 0, 3198 }, .lims = { 0/, 1600 }, .sgn = -1 },
 //	{ .rng = { -500, 4600 }, .lims = { 509, 3600 }, .sgn = 1 },
-		{ .rng = { 0, 4096 }, .lims = { 0, 4096 }, .sgn = 1 },
+		{ .rng = { -500, 5096 }, .lims = { 0, 4096 }, .sgn = 1 },
 		{ .rng = { 0, 3198 }, .lims = { 0, 1600 }, .sgn = -1 },
-		{ .rng = { 0, 4096 }, .lims = { 0, 4096 }, .sgn = 1 },
+		{ .rng = { -1000, 5600 }, .lims = { 0, 4096 }, .sgn = 1 },
 };
 extern const int16_t HAND_CTRL_LUT[8][16][16][2][3];
 // map the ADC via channel order to XYZ
@@ -90,7 +91,7 @@ volatile uint8_t _buf_fresh = 0, _con_fresh = 0;
 volatile uint16_t tick_fin_buf = 0, tick_fin = 0, tick_start_buf = 0, tick_cur = 1; // start with consumer hungry
 int32_t A[4] = { 0, A1, A2, A3 };
 
-volatile int32_t uart_buf[10];
+volatile int32_t uart_buf[20], uart_buf_b[20];
 
 extern DMA_HandleTypeDef hdma_adc2;
 extern UART_HandleTypeDef huart2;
@@ -161,11 +162,12 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim2);
 
-  AS1130_Init();
+//  AS1130_Init();
 
   htim2.Instance->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
 
-  HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);uint16_t R0 = A[1] + A[2] + A[3];
+  HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);
+  uint16_t R0 = A[1] + A[2] + A[3];
 
   mcp1130_txrx();
   adc_rx();
@@ -192,7 +194,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  {
+	  if(0) {
 		  uint16_t tick = pos_idx();
 		  uint16_t loc[2] = {
 				  (pos[tick * POS_STRIDE + 1 * NUM_POS_DERIV] * PER_RADS[1] / RNGs[1] / 2) + 127,
@@ -208,8 +210,8 @@ int main(void)
 	  }
 
 	  {
-		  int32_t max_tf = 0;
-		  int32_t xyz[3] = { 0 }, xyzd[3] = { 0 }, t[3] = { 0 }, v[3] = { 0 }, tf[3] = { 0 }, tbnd[2] = { 0 }, tp[3] = { 0 };
+		  float max_tf = 0.0f, tf[3] = { 0 };
+		  int32_t xyz[3] = { 0 }, xyzd[3] = { 0 }, t[3] = { 0 }, v[3] = { 0 }, tp[3] = { 0 };
 		  float tp_[3];
 		  uint8_t _converged = 0, _hand_ctrl_moved = 0;
 
@@ -314,8 +316,8 @@ int main(void)
 				  // az, el, rad
 				  int32_t sph[3] = { -hand_ctrl_norm[0][2], hand_ctrl_norm[0][0], hand_ctrl_norm[0][1] };
 				  int32_t sphd[3] = { hand_ctrl_d[2], hand_ctrl_d[0], hand_ctrl_d[1] };
-				  uart_buf[0] = sph[0];uart_buf[1] = sph[1];uart_buf[2] = sph[2];
 				  uint8_t lut_xyz[3] = { abs(sph[0]) >> (_W - 3), (sph[1] + (1 << _W)) >> ((_W + 1) - 4), sph[2] >> (_W - 4) };
+				  uart_buf[0] = lut_xyz[0];uart_buf[1] = lut_xyz[1];uart_buf[2] = lut_xyz[2];
 				  uint32_t min_dist = 0xFFFFFFFF;
 				  for(uint8_t i = 0; i < 2; i++) {
 					  int16_t *t_ = &HAND_CTRL_LUT[lut_xyz[0]][lut_xyz[1]][lut_xyz[2]][i][0];
@@ -379,15 +381,17 @@ int main(void)
 							   ; j < TRAJ_ITER_LIM
 							   ; va_ /= 2, vb_ /= 2, j++
 			  ) {
-				  if(!traj_t(pos_stash[i * NUM_POS_DERIV], t[i], va_, vb_, tbnd, &JOINT_PHYS[i]) && tbnd[1] > 0) {
-					  tf[i] = (1 << _TW) / tbnd[1];
+				  if(!traj_qsp(
+						  I2F(pos_stash[i * NUM_POS_DERIV]),
+						  I2F(t[i]),
+						  I2F(va_),
+						  I2F(vb_),
+						  &JOINT_PHYS[i],
+						  &tf[i])
+					) {
 					  v[i] = vb_;
 					  //						  if(tf_ > 2 * MAX_TF)
 					  //							  _converged = 0;
-					  for(uint8_t i = 0; i < 3; i++) {
-						  if(tf[i] > max_tf)
-							  max_tf = tf[i];
-					  }
 					  break;
 				  }
 			  }
@@ -397,18 +401,30 @@ int main(void)
 			  }
 		  }
 		  if(_converged) {
+			  HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
 			  for(uint8_t i = 0; i < 3; i++) {
-//				  uart_buf[i] = hand_ctrl_d_buf[0][i];
-//				  uart_buf[3 + i] = xyz[i];
-				  uart_buf[3 + i] = t[i];
+				  if(tf[i] > max_tf)
+					  max_tf = tf[i];
 			  }
-			  HAL_UART_Transmit_IT(&huart2, uart_buf, 6 * sizeof(uart_buf[0]));
-			  tick_fin_buf = (max_tf * TIM2_FREQ * SPEEDUP_FACTOR_D / SPEEDUP_FACTOR_N) >> _W; // WATCH: TIM3_FREQ is base units
+			  tick_fin_buf = max_tf * TIM2_FREQ * SPEEDUP_FACTOR_D / SPEEDUP_FACTOR_N; // WATCH: TIM2_FREQ is base units
 			  tick_fin_buf = max(1, tick_fin_buf);
 
 			  for(uint8_t i = 0; i < NUM_POS; i++) {
-				  for(uint8_t j = 0; j < 3; j++) {
-					  lerp(pos_stash[j * NUM_POS_DERIV], t[j], pos_stash[j * NUM_POS_DERIV + 1], v[j], max_tf, (i * max_tf) / (NUM_POS - 1), &pos_dbl_buf[0][i * POS_STRIDE + j * NUM_POS_DERIV]); // WATCH: NUM_POS and PER_RADS is natural units
+				  for(volatile uint8_t j = 0; j < 3; j++) {
+					  float pos_[NUM_POS_DERIV] = { 0 };
+					  lerp_qsp(
+						I2F(pos_stash[j * NUM_POS_DERIV]),
+						I2F(t[j]),
+						I2F(pos_stash[j * NUM_POS_DERIV + 1]),
+						I2F(v[j]),
+						max_tf,
+						(i * max_tf) / (NUM_POS - 1),
+						pos_
+					  );
+					  for(uint8_t k = 0; k < NUM_POS_DERIV; k++) {
+						  pos_dbl_buf[0][i * POS_STRIDE + j * NUM_POS_DERIV + k] = F2I(pos_[k]);
+					  }
+					  // WATCH: NUM_POS and PER_RADS is natural units
 					  // interestingly, the integer arithmetic introduces rounding-like errors, not only floor-like errors (e.g. skips up to 2)
 				  }
 			  }
@@ -431,10 +447,22 @@ int main(void)
 				  _buf_fresh = 1;
 			  }
 			  _con_fresh = 0;
+
+			  for(uint16_t i = 0; i < 3; i++) {
+//				  uart_buf[i] = hand_ctrl_d_buf[0][i];
+//				  uart_buf[3 + i] = xyz[i];
+//				  uart_buf[i] = pos_dbl_buf[0][NUM_POS_ELE - POS_STRIDE + i * NUM_POS_DERIV];
+				  uart_buf[3 + i] = pos_stash[i * 2 + 1];
+				  uart_buf[6 + i] = t[i];
+				  uart_buf[i] = pos_stash[i * 2];
+			  }
+//			  memcpy(&uart_buf[6], &max_tf, 4);
+			  uart_buf[10] = HAL_GetTick();
+			  uart_buf[9] = tick_fin_buf;
+			  HAL_UART_Transmit(&huart2, uart_buf, 11 * sizeof(uart_buf[0]), 50);
 		  }
 	  }
 
-	  HAL_GPIO_TogglePin(LD_GPIO_Port, LD_Pin);
   }
   /* USER CODE END 3 */
 }
